@@ -151,6 +151,72 @@ function App() {
     }
   }
 
+  const [touchStart, setTouchStart] = useState(null)
+
+  const onDragStart = (e, r, c) => {
+    if (isProcessing) return
+    e.dataTransfer.setData('tile', JSON.stringify({ r, c }))
+    setSelectedTile({ r, c })
+  }
+
+  const onDragOver = (e) => {
+    e.preventDefault()
+  }
+
+  const onDrop = (e, r, c) => {
+    e.preventDefault()
+    if (isProcessing) return
+    const draggedTile = JSON.parse(e.dataTransfer.getData('tile'))
+    const isAdjacent = 
+      Math.abs(draggedTile.r - r) + Math.abs(draggedTile.c - c) === 1
+
+    if (isAdjacent) {
+      swapTiles(draggedTile, { r, c })
+      setSelectedTile(null)
+    }
+  }
+
+  const onTouchStart = (e, r, c) => {
+    if (isProcessing) return
+    setTouchStart({
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      r, c
+    })
+    setSelectedTile({ r, c })
+  }
+
+  const onTouchEnd = (e) => {
+    if (!touchStart || isProcessing) return
+    
+    const touchEnd = {
+      x: e.changedTouches[0].clientX,
+      y: e.changedTouches[0].clientY
+    }
+
+    const dx = touchEnd.x - touchStart.x
+    const dy = touchEnd.y - touchStart.y
+    const absDx = Math.abs(dx)
+    const absDy = Math.abs(dy)
+
+    if (Math.max(absDx, absDy) > 30) {
+      let targetR = touchStart.r
+      let targetC = touchStart.c
+
+      if (absDx > absDy) {
+        targetC += dx > 0 ? 1 : -1
+      } else {
+        targetR += dy > 0 ? 1 : -1
+      }
+
+      if (targetR >= 0 && targetR < GRID_SIZE && targetC >= 0 && targetC < GRID_SIZE) {
+        swapTiles({ r: touchStart.r, c: touchStart.c }, { r: targetR, c: targetC })
+        setSelectedTile(null)
+      }
+    }
+    setTouchStart(null)
+  }
+
   return (
     <div className="app-container">
       <h1 className="game-title">SIGNAL</h1>
@@ -163,6 +229,12 @@ function App() {
                 key={`${r}-${c}`} 
                 className={`tile tile-${tile} ${isSelected ? 'selected' : ''} ${tile === null ? 'cleared' : ''}`}
                 onClick={() => handleTileClick(r, c)}
+                draggable={!isProcessing}
+                onDragStart={(e) => onDragStart(e, r, c)}
+                onDragOver={onDragOver}
+                onDrop={(e) => onDrop(e, r, c)}
+                onTouchStart={(e) => onTouchStart(e, r, c)}
+                onTouchEnd={onTouchEnd}
                 data-row={r}
                 data-col={c}
               />
