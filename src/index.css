@@ -387,12 +387,12 @@ body {
 }
 
 /* Tile Glows (Asset-Specific Identity) */
-.tile-0 { --tile-glow: #00FF41; } /* Alpha */
-.tile-1 { --tile-glow: #4D9FFF; } /* Clover */
-.tile-2 { --tile-glow: #FFD700; } /* Eyes */
-.tile-3 { --tile-glow: #FF4D4D; } /* Lightbulb */
-.tile-4 { --tile-glow: #DDA0DD; } /* Mr Observer */
-.tile-5 { --tile-glow: #FFFFFF; } /* Signal Node */
+.tile-0 { --tile-glow: #FA5128; } /* Alpha */
+.tile-1 { --tile-glow: #37A834; } /* Clover */
+.tile-2 { --tile-glow: #60A5FA; } /* Eyes */
+.tile-3 { --tile-glow: #FACC15; } /* Lightbulb */
+.tile-4 { --tile-glow: #FFFFFF; } /* Mr Observer (Bright white for rare contrast) */
+.tile-5 { --tile-glow: #C084FC; } /* Signal Node */
 
 .tile-icon {
   filter: drop-shadow(0 0 10px var(--tile-glow));

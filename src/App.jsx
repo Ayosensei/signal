@@ -9,7 +9,8 @@ import './index.css'
 
 // --- Configuration ---
 const GRID_SIZE = 8
-const TILE_TYPES = 6
+const NORMAL_TILE_TYPES = 5 // Types 0 to 4 are normal assets
+const OBSERVER_TYPE = 5 // Special Mr. Observer tile
 
 // --- Constants ---
 const TILE_ASSETS = [
@@ -17,17 +18,19 @@ const TILE_ASSETS = [
   'Clover.png',
   'Eyes.png',
   'Lightbulb.png',
-  'Mr Observer.png',
-  'Signal Node.png'
+  'Signal Node.png', // Index 4 (was 5)
+  'Mr Observer.png'  // Index 5 (was 4)
 ]
 
 function App() {
   // --- [STATE] ---
   const [view, setView] = useState('splash') // Current View: 'splash', 'game', 'about'
-  const [grid, setGrid] = useState([])       // 8x8 Board State
+  const [grid, setGrid] = useState([])
   const [selectedTile, setSelectedTile] = useState(null)
-  const [isProcessing, setIsProcessing] = useState(false) // Input Lock during cascades
-  const [score, setScore] = useState(0)
+  const [isProcessing, setIsProcessing] = useState(false)
+  
+  // Game Stats
+  const [score, setScore] = useState(12450)
   const [highScore, setHighScore] = useState(12450)
 
   // --- [GAME INITIALIZATION] ---
@@ -41,16 +44,17 @@ function App() {
     for (let r = 0; r < GRID_SIZE; r++) {
       const row = []
       for (let c = 0; c < GRID_SIZE; c++) {
-        row.push(Math.floor(Math.random() * TILE_TYPES))
+        // Only spawn normal tiles (0 to 4)
+        row.push({ type: Math.floor(Math.random() * NORMAL_TILE_TYPES), special: null })
       }
       newGrid.push(row)
     }
 
     // Pattern Check: Regenerate if matches exist naturally
-    while (checkMatches(newGrid)) {
+    while (findMatchGroups(newGrid).length > 0) {
       for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
-          newGrid[r][c] = Math.floor(Math.random() * TILE_TYPES)
+          newGrid[r][c] = { type: Math.floor(Math.random() * NORMAL_TILE_TYPES), special: null }
         }
       }
     }
@@ -61,68 +65,111 @@ function App() {
     generateBoard()
   }, [generateBoard])
 
-  // --- [MATCH DETECTION] ---
+  // --- [ADVANCED MATCH DETECTION] ---
 
   /**
-   * Scans the grid for horizontal and vertical matches of 3+.
-   * @returns {Array|null} Array of matching tile coordinates or null.
+   * Scans the grid and groups connected orthogonal matches.
+   * This allows detection of Match-4, Match-5, and L/T shapes.
+   * @returns {Array} Array of match groups (each group is a Set of coordinates 'r,c' and metadata)
    */
-  const checkMatches = (currentGrid) => {
-    const matches = []
+  const findMatchGroups = (currentGrid) => {
+    const horizontalMatches = []
+    const verticalMatches = []
 
-    // Horizontal Scan
+    // 1. Find all horizontal lines of 3+
     for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE - 2; c++) {
-        const type = currentGrid[r][c]
-        if (type !== null && type === currentGrid[r][c + 1] && type === currentGrid[r][c + 2]) {
-          matches.push({ r, c })
-          matches.push({ r, c: c + 1 })
-          matches.push({ r, c: c + 2 })
+      let matchCount = 1
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const current = currentGrid[r][c]
+        const next = c < GRID_SIZE - 1 ? currentGrid[r][c + 1] : null
+        
+        if (current && next && current.type === next.type && current.type !== null && current.type !== OBSERVER_TYPE) {
+          matchCount++
+        } else {
+          if (matchCount >= 3) {
+            const line = []
+            for (let i = 0; i < matchCount; i++) line.push({ r, c: c - i })
+            horizontalMatches.push(line)
+          }
+          matchCount = 1
         }
       }
     }
 
-    // Vertical Scan
+    // 2. Find all vertical lines of 3+
     for (let c = 0; c < GRID_SIZE; c++) {
-      for (let r = 0; r < GRID_SIZE - 2; r++) {
-        const type = currentGrid[r][c]
-        if (type !== null && type === currentGrid[r + 1][c] && type === currentGrid[r + 2][c]) {
-          matches.push({ r, c })
-          matches.push({ r: r + 1, c })
-          matches.push({ r: r + 2, c })
+      let matchCount = 1
+      for (let r = 0; r < GRID_SIZE; r++) {
+        const current = currentGrid[r][c]
+        const next = r < GRID_SIZE - 1 ? currentGrid[r + 1][c] : null
+        
+        if (current && next && current.type === next.type && current.type !== null && current.type !== OBSERVER_TYPE) {
+          matchCount++
+        } else {
+          if (matchCount >= 3) {
+            const line = []
+            for (let i = 0; i < matchCount; i++) line.push({ r: r - i, c })
+            verticalMatches.push(line)
+          }
+          matchCount = 1
         }
       }
     }
 
-    return matches.length > 0 ? matches : null
+    const allLines = [...horizontalMatches, ...verticalMatches]
+    if (allLines.length === 0) return []
+
+    // 3. Group intersecting lines of the same color
+    const groups = []
+    const visitedIndices = new Set()
+
+    for (let i = 0; i < allLines.length; i++) {
+      if (visitedIndices.has(i)) continue
+      
+      const currentGroup = new Set(allLines[i].map(pt => `${pt.r},${pt.c}`))
+      const type = currentGrid[allLines[i][0].r][allLines[i][0].c].type
+      let addedToGroup = true
+      
+      while (addedToGroup) {
+        addedToGroup = false
+        for (let j = i + 1; j < allLines.length; j++) {
+          if (visitedIndices.has(j)) continue
+          const otherLineType = currentGrid[allLines[j][0].r][allLines[j][0].c].type
+          if (type !== otherLineType) continue
+          
+          const hasIntersection = allLines[j].some(pt => currentGroup.has(`${pt.r},${pt.c}`))
+          if (hasIntersection) {
+            allLines[j].forEach(pt => currentGroup.add(`${pt.r},${pt.c}`))
+            visitedIndices.add(j)
+            addedToGroup = true
+          }
+        }
+      }
+      
+      groups.push({
+        coords: Array.from(currentGroup).map(str => {
+          const [r, c] = str.split(',').map(Number)
+          return { r, c }
+        }),
+        type: type,
+        linesInvolved: horizontalMatches.filter(l => l.some(pt => currentGroup.has(`${pt.r},${pt.c}`))).length + 
+                       verticalMatches.filter(l => l.some(pt => currentGroup.has(`${pt.r},${pt.c}`))).length,
+        maxLength: Math.max(...allLines.filter(l => l.some(pt => currentGroup.has(`${pt.r},${pt.c}`))).map(l => l.length))
+      })
+    }
+    
+    return groups
   }
 
   // --- [GAME LOOP: CASCADE LOGIC] ---
 
   /**
-   * Core Game Loop: Clears matches, applies gravity, refills board, and recurses.
-   * This function locks inputs until the board is stable.
+   * Applies gravity, refills the board, and recurses matches.
    */
-  const handleMatches = async (currentGrid) => {
-    const matches = checkMatches(currentGrid)
-    if (!matches) {
-      setIsProcessing(false) // Finish cascade loop
-      return
-    }
-
-    setIsProcessing(true) // Lock inputs
-
-    // 1. CLEAR: Nullify matching tiles
+  const handleGravityAndRefill = async (currentGrid) => {
     const newGrid = currentGrid.map(row => [...row])
-    matches.forEach(({ r, c }) => {
-      newGrid[r][c] = null
-    })
-    setGrid(newGrid)
-    setScore(prev => prev + matches.length * 10)
-
-    await new Promise(resolve => setTimeout(resolve, 300))
-
-    // 2. GRAVITY: Shift tiles down to fill gaps
+    
+    // 2. GRAVITY: Shift tiles down
     for (let c = 0; c < GRID_SIZE; c++) {
       let emptyRow = GRID_SIZE - 1
       for (let r = GRID_SIZE - 1; r >= 0; r--) {
@@ -137,19 +184,71 @@ function App() {
     setGrid([...newGrid])
     await new Promise(resolve => setTimeout(resolve, 200))
 
-    // 3. REFILL: Spawn new randomized tiles at the top
+    // 3. REFILL: New tiles from top
     for (let c = 0; c < GRID_SIZE; c++) {
       for (let r = 0; r < GRID_SIZE; r++) {
         if (newGrid[r][c] === null) {
-          newGrid[r][c] = Math.floor(Math.random() * TILE_TYPES)
+          newGrid[r][c] = { type: Math.floor(Math.random() * NORMAL_TILE_TYPES), special: null }
         }
       }
     }
     setGrid([...newGrid])
     await new Promise(resolve => setTimeout(resolve, 300))
 
-    // 4. RECURSION: Check for secondary matches (cascades)
+    // 4. RECURSION
     handleMatches(newGrid)
+  }
+
+  /**
+   * Core Game Loop: Clears matches, spawns special tiles, then triggers gravity.
+   */
+  const handleMatches = async (currentGrid, swapPos1 = null, swapPos2 = null) => {
+    const groups = findMatchGroups(currentGrid)
+    if (groups.length === 0) {
+      setIsProcessing(false) // Finish cascade loop
+      return
+    }
+
+    setIsProcessing(true) // Lock inputs
+
+    // 1. CLEAR & SPAWN
+    const newGrid = currentGrid.map(row => [...row])
+    let clearedCount = 0
+
+    groups.forEach(group => {
+      clearedCount += group.coords.length
+      
+      let specialToSpawn = null
+      if (group.maxLength >= 5) {
+        specialToSpawn = OBSERVER_TYPE
+      }
+
+      // Determine spawn coordinate (prioritize user swap location)
+      let spawnCoord = group.coords[0]
+      if (swapPos1 && swapPos2) {
+        const inGroup1 = group.coords.some(pt => pt.r === swapPos1.r && pt.c === swapPos1.c)
+        const inGroup2 = group.coords.some(pt => pt.r === swapPos2.r && pt.c === swapPos2.c)
+        if (inGroup1) spawnCoord = swapPos1
+        else if (inGroup2) spawnCoord = swapPos2
+      }
+
+      // Clear the tiles
+      group.coords.forEach(({ r, c }) => {
+        newGrid[r][c] = null
+      })
+
+      // Inject special tile
+      if (specialToSpawn !== null) {
+        newGrid[spawnCoord.r][spawnCoord.c] = { type: specialToSpawn, special: null }
+      }
+    })
+
+    setGrid(newGrid)
+    setScore(prev => prev + clearedCount * 10)
+
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    await handleGravityAndRefill(newGrid)
   }
 
   // --- [INPUT HANDLERS] ---
@@ -157,6 +256,7 @@ function App() {
   /**
    * Swaps two adjacent tiles if it results in a match.
    * Auto-reverts if no match occurs.
+   * Handles Special Tile activations.
    */
   const swapTiles = async (tile1, tile2) => {
     setIsProcessing(true)
@@ -165,12 +265,41 @@ function App() {
     newGrid[tile1.r][tile1.c] = newGrid[tile2.r][tile2.c]
     newGrid[tile2.r][tile2.c] = temp
 
-    const matches = checkMatches(newGrid)
-    if (matches) {
+    // SPECIAL: Check if Observer is activated
+    const t1IsObserver = newGrid[tile1.r][tile1.c].type === OBSERVER_TYPE
+    const t2IsObserver = newGrid[tile2.r][tile2.c].type === OBSERVER_TYPE
+
+    if (t1IsObserver || t2IsObserver) {
+       setGrid(newGrid)
+       await new Promise(resolve => setTimeout(resolve, 200))
+       
+       const targetColor = t1IsObserver ? newGrid[tile2.r][tile2.c].type : newGrid[tile1.r][tile1.c].type
+       
+       const clearedGrid = newGrid.map(row => [...row])
+       let clearedCount = 0
+       for (let r = 0; r < GRID_SIZE; r++) {
+         for (let c = 0; c < GRID_SIZE; c++) {
+           if (clearedGrid[r][c] && (clearedGrid[r][c].type === targetColor || clearedGrid[r][c].type === OBSERVER_TYPE)) {
+             clearedGrid[r][c] = null
+             clearedCount++
+           }
+         }
+       }
+       setGrid(clearedGrid)
+       setScore(prev => prev + clearedCount * 10)
+       await new Promise(resolve => setTimeout(resolve, 300))
+       
+       await handleGravityAndRefill(clearedGrid)
+       return
+    }
+
+    // NORMAL SWAP
+    const groups = findMatchGroups(newGrid)
+    if (groups.length > 0) {
       setGrid(newGrid)
-      await handleMatches(newGrid)
+      await handleMatches(newGrid, tile1, tile2)
     } else {
-      // No match found -> Visual Revert
+      // Revert logic
       setGrid(newGrid)
       await new Promise(resolve => setTimeout(resolve, 200))
       const revertedGrid = [...grid.map(row => [...row])]
@@ -434,10 +563,13 @@ function App() {
                 const isSelected = selectedTile?.r === r && selectedTile?.c === c
                 const hasTag = r === 0 && c === 7 
                 
+                // Safe extraction of the tile type
+                const tileType = tile ? tile.type : null
+                
                 return (
                   <div
                     key={`${r}-${c}`}
-                    className={`tile tile-${tile} ${isSelected ? 'selected' : ''} ${tile === null ? 'cleared' : ''}`}
+                    className={`tile tile-${tileType} ${isSelected ? 'selected' : ''} ${tile === null ? 'cleared' : ''}`}
                     onClick={() => handleTileClick(r, c)}
                     draggable={!isProcessing}
                     onDragStart={(e) => onDragStart(e, r, c)}
@@ -449,10 +581,10 @@ function App() {
                     data-col={c}
                   >
                     <div className="tile-icon">
-                      {tile !== null && (
+                      {tileType !== null && (
                         <img
-                          src={`/tiles/${TILE_ASSETS[tile]}`}
-                          alt={`Tile ${tile}`}
+                          src={`/tiles/${TILE_ASSETS[tileType]}`}
+                          alt={`Tile ${tileType}`}
                           className="tile-img"
                         />
                       )}
