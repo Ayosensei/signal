@@ -4,13 +4,15 @@ const GRID_SIZE = 8
 const NORMAL_TILE_TYPES = 5
 const OBSERVER_TYPE = 5
 
-export const useGameLogic = (mode = 'observation') => {
+export const useGameLogic = (mode = 'observation', levelConfig = null) => {
   const [grid, setGrid] = useState([])
   const [score, setScore] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [timer, setTimer] = useState(60) // Signal Mode
-  const [movesLeft, setMovesLeft] = useState(25) // Conviction Mode
+  const [timer, setTimer] = useState(60)
+  const [movesLeft, setMovesLeft] = useState(25)
   const [isGameOver, setIsGameOver] = useState(false)
+  const [isWin, setIsWin] = useState(false)
+  const [currentSequence, setCurrentSequence] = useState(levelConfig)
   
   const tileIdRef = useRef(0)
   const getNextId = useCallback(() => `tile-${tileIdRef.current++}`, [])
@@ -116,7 +118,8 @@ export const useGameLogic = (mode = 'observation') => {
   }, [])
 
   useEffect(() => {
-    if (mode === 'signal' && !isGameOver) {
+    const gameMode = currentSequence?.mode || mode
+    if (gameMode === 'signal' && !isGameOver && !isWin) {
       const interval = setInterval(() => {
         setTimer(prev => {
           if (prev <= 1) {
@@ -129,7 +132,7 @@ export const useGameLogic = (mode = 'observation') => {
       }, 1000)
       return () => clearInterval(interval)
     }
-  }, [mode, isGameOver])
+  }, [mode, isGameOver, isWin, currentSequence])
 
   const generateBoard = useCallback(() => {
     const newGrid = []
@@ -158,12 +161,24 @@ export const useGameLogic = (mode = 'observation') => {
     }
     setGrid(newGrid)
     setScore(0)
-    setTimer(60)
-    setMovesLeft(25)
+    
+    if (currentSequence) {
+      setTimer(currentSequence.time || 60)
+      setMovesLeft(currentSequence.moves || 25)
+    } else {
+      setTimer(60)
+      setMovesLeft(25)
+    }
+    
     setIsGameOver(false)
-  }, [findMatchGroups])
+    setIsWin(false)
+  }, [findMatchGroups, currentSequence, getNextId])
 
-  // Fix: Generate board on mount AND when mode changes
+  // Generate board when level or mode changes
+  useEffect(() => {
+    setCurrentSequence(levelConfig)
+  }, [levelConfig])
+
   useEffect(() => {
     generateBoard()
   }, [generateBoard, mode])
@@ -291,7 +306,25 @@ export const useGameLogic = (mode = 'observation') => {
     })
 
     setGrid(newGrid)
-    setScore(prev => prev + clearedCount * 10)
+    
+    // Fix: Use functional update to avoid stale closures during cascades
+    setScore(currentScore => {
+      const addedPoints = clearedCount * 10
+      const totalScore = currentScore + addedPoints
+
+      // Objective Check inside functional update to get latest score
+      if (currentSequence && currentSequence.objective.type === 'score') {
+        if (totalScore >= currentSequence.objective.target) {
+          setIsWin(true)
+        }
+      }
+      return totalScore
+    })
+
+    if (isWin) {
+      setIsProcessing(false)
+      return
+    }
 
     await new Promise(resolve => setTimeout(resolve, 300))
     await runGravity(newGrid)
@@ -467,8 +500,10 @@ export const useGameLogic = (mode = 'observation') => {
     timer,
     movesLeft,
     isGameOver,
+    isWin,
     isProcessing,
     swapTiles,
-    generateBoard
+    generateBoard,
+    currentSequence
   }
 }

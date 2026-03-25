@@ -3,59 +3,193 @@
  * Core game engine for a match-3 movement disguised as a game.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import './index.css'
 import { useGameLogic } from './hooks/useGameLogic'
 import GameBoard from './components/GameBoard'
 import SplashScreen from './components/SplashScreen'
 import AboutPage from './components/AboutPage'
 import Navigation from './components/Navigation'
+import { SEQUENCES } from './data/levels'
 
 function App() {
   const [view, setView] = useState('splash')
   const [showAbout, setShowAbout] = useState(true)
   const [gameMode, setGameMode] = useState('observation')
-  const { grid, score, timer, movesLeft, isGameOver, isProcessing, swapTiles, generateBoard } = useGameLogic(gameMode)
+  const [selectedSequence, setSelectedSequence] = useState(null)
   
-  // Load highScore from localStorage
+  const [unlockedSequence, setUnlockedSequence] = useState(() => {
+    const saved = localStorage.getItem('signal_unlocked_sequence')
+    return saved ? parseInt(saved, 10) : 1
+  })
+
+  const { 
+    grid, 
+    score, 
+    timer, 
+    movesLeft, 
+    isGameOver, 
+    isWin, 
+    isProcessing, 
+    swapTiles, 
+    generateBoard,
+    currentSequence 
+  } = useGameLogic(gameMode, selectedSequence)
+  
   const [highScore, setHighScore] = useState(() => {
     const saved = localStorage.getItem('signal_high_score')
     return saved ? parseInt(saved, 10) : 0
   })
 
-  // Persist high score
+  // Persist high score and unlocked level
   useEffect(() => {
     if (score > highScore) {
       setHighScore(score)
       localStorage.setItem('signal_high_score', score.toString())
     }
-  }, [score, highScore])
+    if (isWin && currentSequence) {
+      const nextLevel = currentSequence.id + 1
+      if (nextLevel > unlockedSequence) {
+        setUnlockedSequence(nextLevel)
+        localStorage.setItem('signal_unlocked_sequence', nextLevel.toString())
+      }
+    }
+  }, [score, highScore, isWin, currentSequence, unlockedSequence])
 
   // Navigation handlers
   const handleSetView = (newView) => {
     if (newView === 'about') {
       setShowAbout(true)
+    } else if (newView === 'sequence-hub') {
+      setView('sequence-hub')
+      setShowAbout(false)
     } else {
+      if (newView === 'splash') setSelectedSequence(null)
       setView(newView)
       setShowAbout(false)
     }
   }
 
+  const startSequence = (seq) => {
+    setSelectedSequence(seq)
+    setGameMode(seq.mode)
+    setView('game')
+  }
+
   const renderContent = () => {
     if (view === 'splash') {
-      return <SplashScreen setView={setView} highScore={highScore} gameMode={gameMode} setGameMode={setGameMode} />
+      return (
+        <SplashScreen 
+          setView={setView} 
+          highScore={highScore} 
+          gameMode={gameMode} 
+          setGameMode={setGameMode}
+          onCampaignClick={() => setView('sequence-hub')}
+        />
+      )
+    }
+
+    if (view === 'sequence-hub') {
+      return (
+        <div className="sequence-hub">
+          <header className="hub-header">
+            <h2 className="hub-title">NETWORK SEQUENCES</h2>
+            <div className="hub-stats">
+              <div className="hub-stat">
+                <span className="label">DECRYPTION_PROGRESS:</span>
+                <span className="value">{Math.round((unlockedSequence / SEQUENCES.length) * 100)}%</span>
+              </div>
+              <div className="hub-stat">
+                <span className="label">ACTIVE_NODES:</span>
+                <span className="value">{unlockedSequence}/{SEQUENCES.length}</span>
+              </div>
+            </div>
+          </header>
+
+          <div className="sequence-grid">
+            {SEQUENCES.map(seq => {
+              const status = seq.id < unlockedSequence ? 'COMPLETE' : seq.id === unlockedSequence ? 'ACTIVE' : 'LOCKED'
+              return (
+                <div 
+                  key={seq.id} 
+                  className={`sequence-card ${status.toLowerCase()}`}
+                  onClick={() => seq.id <= unlockedSequence && startSequence(seq)}
+                >
+                  <div className="seq-number">0{seq.id}</div>
+                  <div className="seq-header">
+                    <span className={`status-pill ${status.toLowerCase()}`}>{status}</span>
+                    {seq.difficulty && (
+                      <span className="difficulty-rating">
+                        {"I".repeat(seq.difficulty)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="seq-content">
+                    <h3 className="seq-name">{seq.name}</h3>
+                    <p className="seq-desc">{seq.description}</p>
+                  </div>
+                  {seq.id <= unlockedSequence && (
+                    <div className="seq-footer">
+                      <div className="seq-meta">
+                        <span className="label">OBJECTIVE:</span>
+                        <span className="value">{seq.objective.target.toLocaleString()} PTS</span>
+                      </div>
+                      <div className="seq-meta">
+                        <span className="label">PARAMS:</span>
+                        <span className="value">
+                          {seq.mode === 'conviction' ? `${seq.moves} MOVES` : `${seq.time} SECS`}
+                        </span>
+                      </div>
+                      {seq.reward && (
+                        <div className="seq-meta reward">
+                          <span className="label">DATA_RECOVERY:</span>
+                          <span className="value">{seq.reward}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {status === 'LOCKED' && <div className="lock-overlay"><span>ENCRYPTED_NODE</span></div>}
+                </div>
+              )
+            })}
+          </div>
+          
+          <button className="hub-back-btn" onClick={() => setView('splash')}>
+            DISCONNECT_SESSION
+          </button>
+        </div>
+      )
     }
     
     return (
       <div className="game-main-layout">
-        {/* ... */}
         <div className="board-container">
           <GameBoard grid={grid} isProcessing={isProcessing} swapTiles={swapTiles} />
-          {isGameOver && (
-            <div className="game-over-overlay">
-              <h2>SIGNAL LOST</h2>
-              <p>FINAL SCORE: {score.toLocaleString()}</p>
-              <button onClick={() => generateBoard()}>REBOOT SYSTEM</button>
+          
+          {(isGameOver || isWin) && (
+            <div className={`game-over-overlay ${isWin ? 'win' : 'loss'}`}>
+              <h2 className="status-text">{isWin ? 'SEQUENCE DECRYPTED' : 'SIGNAL LOST'}</h2>
+              <div className="results-box">
+                <div className="stat">
+                  <span>FINAL SCORE</span>
+                  <span>{score.toLocaleString()}</span>
+                </div>
+                {currentSequence && (
+                  <div className="stat">
+                    <span>TARGET</span>
+                    <span>{currentSequence.objective.target.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="overlay-actions">
+                {isWin && currentSequence && currentSequence.id < SEQUENCES.length ? (
+                  <button onClick={() => startSequence(SEQUENCES[currentSequence.id])}>NEXT SEQUENCE</button>
+                ) : (
+                  <button onClick={() => generateBoard()}>REBOOT SYSTEM</button>
+                )}
+                <button onClick={() => setView('sequence-hub')}>SEQUENCE HUB</button>
+              </div>
             </div>
           )}
         </div>
@@ -70,12 +204,20 @@ function App() {
           <div className="header-left">
             <h1 className="game-title">SIGNAL</h1>
             <div className="game-score">SCORE: {score.toLocaleString()}</div>
-            {gameMode === 'signal' && <div className="game-timer">TIME: {timer}s</div>}
-            {gameMode === 'conviction' && <div className="game-moves">MOVES: {movesLeft}</div>}
+            {currentSequence && (
+              <div className="level-info">
+                <span className="level-id">SEQ {currentSequence.id}</span>
+                <span className="level-target">TARGET: {currentSequence.objective.target.toLocaleString()}</span>
+              </div>
+            )}
+            {!currentSequence && gameMode === 'signal' && <div className="game-timer">TIME: {timer}s</div>}
+            {!currentSequence && gameMode === 'conviction' && <div className="game-moves">MOVES: {movesLeft}</div>}
+            {currentSequence?.mode === 'signal' && <div className="game-timer">TIME: {timer}s</div>}
+            {currentSequence?.mode === 'conviction' && <div className="game-moves">MOVES: {movesLeft}</div>}
           </div>
           <div className="header-right">
             <div className="header-icon" onClick={() => generateBoard()}>↺</div>
-            <div className="header-icon">≡</div>
+            <div className="header-icon" onClick={() => setView('sequence-hub')}>≡</div>
           </div>
         </div>
       )}
