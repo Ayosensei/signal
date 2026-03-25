@@ -93,6 +93,9 @@ export const useGameLogic = (mode = 'observation') => {
       })
 
       const maxLineLength = Math.max(...linesInCurrentGroup.map(l => l.length))
+      const longestLine = linesInCurrentGroup.find(l => l.length === maxLineLength)
+      const orientation = horizontalMatches.includes(longestLine) ? 'horizontal' : 'vertical'
+      
       const hasIntersection = linesInCurrentGroup.length > 1 && 
         horizontalMatches.some(h => linesInCurrentGroup.includes(h)) && 
         verticalMatches.some(v => linesInCurrentGroup.includes(v))
@@ -101,6 +104,7 @@ export const useGameLogic = (mode = 'observation') => {
         coords: groupCoords,
         type: type,
         maxLineLength,
+        orientation,
         hasIntersection
       })
     }
@@ -148,47 +152,70 @@ export const useGameLogic = (mode = 'observation') => {
     setIsGameOver(false)
   }, [findMatchGroups])
 
+  // Fix: Generate board on mount AND when mode changes
+  useEffect(() => {
+    generateBoard()
+  }, [generateBoard, mode])
+
   const activateSpecial = async (currentGrid, r, c, tileType) => {
-    const tile = currentGrid[r][c]
-    if (!tile || !tile.special) return currentGrid
+    let newGrid = currentGrid.map(row => [...row])
+    let tilesToProcess = [{ r, c }]
+    let processedTiles = new Set()
+    let finalCoordsToClear = []
 
-    const newGrid = currentGrid.map(row => [...row])
-    newGrid[r][c] = null // Consume the special tile
+    while (tilesToProcess.length > 0) {
+      const { r: curR, c: curC } = tilesToProcess.shift()
+      const key = `${curR},${curC}`
+      if (processedTiles.has(key)) continue
+      processedTiles.add(key)
 
-    let coordsToClear = []
+      const tile = newGrid[curR][curC]
+      if (!tile || !tile.special) {
+        finalCoordsToClear.push({ r: curR, c: curC })
+        continue
+      }
 
-    if (tile.special === 'linear-h') {
-      for (let i = 0; i < GRID_SIZE; i++) coordsToClear.push({ r, c: i })
-    } else if (tile.special === 'linear-v') {
-      for (let i = 0; i < GRID_SIZE; i++) coordsToClear.push({ r: i, c })
-    } else if (tile.special === 'pulse') {
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const nr = r + dr, nc = c + dc
-          if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) coordsToClear.push({ r: nr, c: nc })
+      finalCoordsToClear.push({ r: curR, c: curC })
+      let area = []
+
+      if (tile.special === 'linear-h') {
+        for (let i = 0; i < GRID_SIZE; i++) area.push({ r: curR, c: i })
+      } else if (tile.special === 'linear-v') {
+        for (let i = 0; i < GRID_SIZE; i++) area.push({ r: i, c: curC })
+      } else if (tile.special === 'pulse') {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = curR + dr, nc = curC + dc
+            if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) area.push({ r: nr, c: nc })
+          }
+        }
+      } else if (tile.special === 'observer') {
+        const targetType = tileType !== undefined ? tileType : Math.floor(Math.random() * NORMAL_TILE_TYPES)
+        for (let i = 0; i < GRID_SIZE; i++) {
+          for (let j = 0; j < GRID_SIZE; j++) {
+            if (newGrid[i][j]?.type === targetType) area.push({ r: i, c: j })
+          }
         }
       }
-    } else if (tile.special === 'observer') {
-      const randomType = tileType !== undefined ? tileType : Math.floor(Math.random() * NORMAL_TILE_TYPES)
-      for (let i = 0; i < GRID_SIZE; i++) {
-        for (let j = 0; j < GRID_SIZE; j++) {
-          if (newGrid[i][j]?.type === randomType) coordsToClear.push({ r: i, c: j })
+
+      area.forEach(pt => {
+        const ptKey = `${pt.r},${pt.c}`
+        if (!processedTiles.has(ptKey)) {
+          if (newGrid[pt.r][pt.c]?.special) {
+            tilesToProcess.push(pt)
+          } else {
+            finalCoordsToClear.push(pt)
+            processedTiles.add(ptKey)
+          }
         }
-      }
+      })
     }
 
-    coordsToClear.forEach(({ r: cr, c: cc }) => {
-      if (newGrid[cr][cc]) {
-        // Recursively activate if we hit another special tile
-        if (newGrid[cr][cc].special && (cr !== r || cc !== c)) {
-          // This would be complex to handle async here, so we'll just mark it for clearing
-          // and the next gravity/refill cycle will handle consequences
-        }
-        newGrid[cr][cc] = null
-      }
+    finalCoordsToClear.forEach(({ r: fr, c: fc }) => {
+      newGrid[fr][fc] = null
     })
 
-    return newGrid
+    return { grid: newGrid, clearedCount: finalCoordsToClear.length }
   }
 
   const runMatches = async (currentGrid, swapPos1 = null, swapPos2 = null) => {
@@ -208,7 +235,9 @@ export const useGameLogic = (mode = 'observation') => {
       for (let c = 0; c < GRID_SIZE; c++) {
         const isMatched = groups.some(g => g.coords.some(pt => pt.r === r && pt.c === c))
         if (isMatched && newGrid[r][c]?.special) {
-          newGrid = await activateSpecial(newGrid, r, c, newGrid[r][c].type)
+          const result = await activateSpecial(newGrid, r, c, newGrid[r][c].type)
+          newGrid = result.grid
+          clearedCount += result.clearedCount
         }
       }
     }
@@ -222,8 +251,8 @@ export const useGameLogic = (mode = 'observation') => {
       } else if (group.hasIntersection) {
         specialToSpawn = 'pulse'
       } else if (group.maxLineLength === 4) {
-        // Randomly choose H or V for now, or based on the line direction
-        specialToSpawn = Math.random() > 0.5 ? 'linear-h' : 'linear-v'
+        // Candy Crush style: Horizontal match makes Vertical stripe, Vertical match makes Horizontal stripe
+        specialToSpawn = group.orientation === 'horizontal' ? 'linear-v' : 'linear-h'
       }
 
       let spawnCoord = group.coords[0]
@@ -300,17 +329,66 @@ export const useGameLogic = (mode = 'observation') => {
     newGrid[tile1.r][tile1.c] = t2
     newGrid[tile2.r][tile2.c] = t1
 
-    // Check for special match combinations or manual activations
+    // Check for special match combinations
     const isT1Special = t1?.special
     const isT2Special = t2?.special
 
     if (isT1Special && isT2Special) {
-      // Massive combo! For now just activate both
-      newGrid = await activateSpecial(newGrid, tile1.r, tile1.c, t2?.type)
-      newGrid = await activateSpecial(newGrid, tile2.r, tile2.c, t1?.type)
       if (mode === 'conviction') setMovesLeft(prev => prev - 1)
-      setGrid(newGrid)
-      await runGravity(newGrid)
+      
+      let finalGrid = newGrid.map(row => [...row])
+      finalGrid[tile1.r][tile1.c] = null
+      finalGrid[tile2.r][tile2.c] = null
+      
+      let coordsToClear = []
+      let clearedCountFromCombo = 0
+      
+      // CASE 1: Pulse + Pulse -> 5x5 Explosion
+      if (t1.special === 'pulse' && t2.special === 'pulse') {
+        const centerR = tile1.r, centerC = tile1.c
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const nr = centerR + dr, nc = centerC + dc
+            if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) coordsToClear.push({ r: nr, c: nc })
+          }
+        }
+      }
+      // CASE 2: Stripe + Pulse -> 3 Rows + 3 Columns Clear
+      else if ((t1.special.includes('linear') && t2.special === 'pulse') || 
+               (t2.special.includes('linear') && t1.special === 'pulse')) {
+        const centerR = tile1.r, centerC = tile1.c
+        for (let i = 0; i < GRID_SIZE; i++) {
+          for (let offset = -1; offset <= 1; offset++) {
+            const r1 = centerR + offset, c1 = centerC + offset
+            if (r1 >= 0 && r1 < GRID_SIZE) coordsToClear.push({ r: r1, c: i }) // 3 Rows
+            if (c1 >= 0 && c1 < GRID_SIZE) coordsToClear.push({ r: i, c: c1 }) // 3 Cols
+          }
+        }
+      }
+      // CASE 3: Stripe + Stripe -> Row + Column (Cross)
+      else if (t1.special.includes('linear') && t2.special.includes('linear')) {
+        for (let i = 0; i < GRID_SIZE; i++) {
+          coordsToClear.push({ r: tile1.r, c: i }) // Row
+          coordsToClear.push({ r: i, c: tile1.c }) // Col
+        }
+      }
+      // Default: Just activate both (e.g. Observer + Pulse)
+      else {
+        const res1 = await activateSpecial(finalGrid, tile1.r, tile1.c, t2?.type)
+        const res2 = await activateSpecial(res1.grid, tile2.r, tile2.c, t1?.type)
+        finalGrid = res2.grid
+        clearedCountFromCombo = res1.clearedCount + res2.clearedCount
+      }
+
+      if (coordsToClear.length > 0) {
+        coordsToClear.forEach(({ r, c }) => {
+          finalGrid[r][c] = null
+        })
+      }
+
+      setGrid(finalGrid)
+      setScore(prev => prev + (coordsToClear.length || clearedCountFromCombo || 25) * 10)
+      await runGravity(finalGrid)
       return
     }
 
@@ -318,12 +396,27 @@ export const useGameLogic = (mode = 'observation') => {
     if (t1?.special === 'observer' || t2?.special === 'observer') {
       const observerPos = t1?.special === 'observer' ? tile1 : tile2
       const otherPos = t1?.special === 'observer' ? tile2 : tile1
-      const otherType = newGrid[otherPos.r][otherPos.c]?.type
+      const otherTile = newGrid[otherPos.r][otherPos.c]
+      const otherType = otherTile?.type
       
-      newGrid = await activateSpecial(newGrid, observerPos.r, observerPos.c, otherType)
+      let finalGrid = newGrid.map(row => [...row])
+      
+      if (otherTile?.special) {
+        // Observer + Special: Transform all of that color!
+        for (let r = 0; r < GRID_SIZE; r++) {
+          for (let c = 0; c < GRID_SIZE; c++) {
+            if (finalGrid[r][c]?.type === otherType) {
+              finalGrid[r][c] = { type: otherType, special: otherTile.special }
+            }
+          }
+        }
+      }
+
+      const result = await activateSpecial(finalGrid, observerPos.r, observerPos.c, otherType)
       if (mode === 'conviction') setMovesLeft(prev => prev - 1)
-      setGrid(newGrid)
-      await runGravity(newGrid)
+      setGrid(result.grid)
+      setScore(prev => prev + result.clearedCount * 10)
+      await runGravity(result.grid)
       return
     }
 

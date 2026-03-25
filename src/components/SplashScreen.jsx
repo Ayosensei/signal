@@ -35,7 +35,6 @@ const SplashScreen = ({ setView, highScore, gameMode, setGameMode }) => {
           <button className="start-game-btn" onClick={() => setView('game')}>
             START {gameMode.toUpperCase()}
           </button>
-          <p className="tutorial-link">INITIALIZE TUTORIAL</p>
         </div>
       </div>
 
