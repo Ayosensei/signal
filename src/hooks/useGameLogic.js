@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 
 const GRID_SIZE = 8
 const NORMAL_TILE_TYPES = 5
@@ -11,6 +11,9 @@ export const useGameLogic = (mode = 'observation') => {
   const [timer, setTimer] = useState(60) // Signal Mode
   const [movesLeft, setMovesLeft] = useState(25) // Conviction Mode
   const [isGameOver, setIsGameOver] = useState(false)
+  
+  const tileIdRef = useRef(0)
+  const getNextId = useCallback(() => `tile-${tileIdRef.current++}`, [])
 
   const findMatchGroups = useCallback((currentGrid) => {
     const horizontalMatches = []
@@ -133,7 +136,11 @@ export const useGameLogic = (mode = 'observation') => {
     for (let r = 0; r < GRID_SIZE; r++) {
       const row = []
       for (let c = 0; c < GRID_SIZE; c++) {
-        row.push({ type: Math.floor(Math.random() * NORMAL_TILE_TYPES), special: null })
+        row.push({ 
+          id: getNextId(), 
+          type: Math.floor(Math.random() * NORMAL_TILE_TYPES), 
+          special: null 
+        })
       }
       newGrid.push(row)
     }
@@ -141,7 +148,11 @@ export const useGameLogic = (mode = 'observation') => {
     while (findMatchGroups(newGrid).length > 0) {
       for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
-          newGrid[r][c] = { type: Math.floor(Math.random() * NORMAL_TILE_TYPES), special: null }
+          newGrid[r][c] = { 
+            id: getNextId(), 
+            type: Math.floor(Math.random() * NORMAL_TILE_TYPES), 
+            special: null 
+          }
         }
       }
     }
@@ -190,7 +201,10 @@ export const useGameLogic = (mode = 'observation') => {
           }
         }
       } else if (tile.special === 'observer') {
-        const targetType = tileType !== undefined ? tileType : Math.floor(Math.random() * NORMAL_TILE_TYPES)
+        const targetType = (tileType !== undefined && tileType !== OBSERVER_TYPE) 
+          ? tileType 
+          : Math.floor(Math.random() * NORMAL_TILE_TYPES)
+        
         for (let i = 0; i < GRID_SIZE; i++) {
           for (let j = 0; j < GRID_SIZE; j++) {
             if (newGrid[i][j]?.type === targetType) area.push({ r: i, c: j })
@@ -269,6 +283,7 @@ export const useGameLogic = (mode = 'observation') => {
 
       if (specialToSpawn !== null) {
         newGrid[spawnCoord.r][spawnCoord.c] = { 
+          id: getNextId(),
           type: specialToSpawn === 'observer' ? OBSERVER_TYPE : group.type, 
           special: specialToSpawn 
         }
@@ -285,6 +300,7 @@ export const useGameLogic = (mode = 'observation') => {
   const runGravity = async (currentGrid) => {
     const newGrid = currentGrid.map(row => [...row])
 
+    // 1. Move existing tiles down
     for (let c = 0; c < GRID_SIZE; c++) {
       let emptyRow = GRID_SIZE - 1
       for (let r = GRID_SIZE - 1; r >= 0; r--) {
@@ -296,18 +312,22 @@ export const useGameLogic = (mode = 'observation') => {
         }
       }
     }
-    setGrid([...newGrid])
-    await new Promise(resolve => setTimeout(resolve, 200))
 
+    // 2. Refill empty slots immediately in the same state update
     for (let c = 0; c < GRID_SIZE; c++) {
       for (let r = 0; r < GRID_SIZE; r++) {
         if (newGrid[r][c] === null) {
-          newGrid[r][c] = { type: Math.floor(Math.random() * NORMAL_TILE_TYPES), special: null }
+          newGrid[r][c] = { 
+            id: getNextId(),
+            type: Math.floor(Math.random() * NORMAL_TILE_TYPES), 
+            special: null 
+          }
         }
       }
     }
-    setGrid([...newGrid])
-    await new Promise(resolve => setTimeout(resolve, 300))
+
+    setGrid(newGrid)
+    await new Promise(resolve => setTimeout(resolve, 400)) // Let animations settle
 
     await runMatches(newGrid)
   }
@@ -354,8 +374,8 @@ export const useGameLogic = (mode = 'observation') => {
         }
       }
       // CASE 2: Stripe + Pulse -> 3 Rows + 3 Columns Clear
-      else if ((t1.special.includes('linear') && t2.special === 'pulse') || 
-               (t2.special.includes('linear') && t1.special === 'pulse')) {
+      else if ((t1.special?.includes('linear') && t2.special === 'pulse') || 
+               (t2.special?.includes('linear') && t1.special === 'pulse')) {
         const centerR = tile1.r, centerC = tile1.c
         for (let i = 0; i < GRID_SIZE; i++) {
           for (let offset = -1; offset <= 1; offset++) {
@@ -366,13 +386,36 @@ export const useGameLogic = (mode = 'observation') => {
         }
       }
       // CASE 3: Stripe + Stripe -> Row + Column (Cross)
-      else if (t1.special.includes('linear') && t2.special.includes('linear')) {
+      else if (t1.special?.includes('linear') && t2.special?.includes('linear')) {
         for (let i = 0; i < GRID_SIZE; i++) {
           coordsToClear.push({ r: tile1.r, c: i }) // Row
           coordsToClear.push({ r: i, c: tile1.c }) // Col
         }
       }
-      // Default: Just activate both (e.g. Observer + Pulse)
+      // CASE 4: Double Observer -> Clear Entire Board
+      else if (t1.special === 'observer' && t2.special === 'observer') {
+        for (let i = 0; i < GRID_SIZE; i++) {
+          for (let j = 0; j < GRID_SIZE; j++) coordsToClear.push({ r: i, c: j })
+        }
+      }
+      // CASE 5: Observer + Special -> Transform all color tiles then activate
+      else if (t1.special === 'observer' || t2.special === 'observer') {
+        const observerCurrentPos = t1.special === 'observer' ? tile2 : tile1
+        const otherType = t1.special === 'observer' ? t2.type : t1.type
+        const otherSpecial = t1.special === 'observer' ? t2.special : t1.special
+        
+        for (let r = 0; r < GRID_SIZE; r++) {
+          for (let c = 0; c < GRID_SIZE; c++) {
+            if (finalGrid[r][c]?.type === otherType) {
+              finalGrid[r][c] = { ...finalGrid[r][c], special: otherSpecial }
+            }
+          }
+        }
+        const result = await activateSpecial(finalGrid, observerCurrentPos.r, observerCurrentPos.c, otherType)
+        finalGrid = result.grid
+        clearedCountFromCombo = result.clearedCount
+      }
+      // Default: Just activate both
       else {
         const res1 = await activateSpecial(finalGrid, tile1.r, tile1.c, t2?.type)
         const res2 = await activateSpecial(res1.grid, tile2.r, tile2.c, t1?.type)
@@ -392,31 +435,16 @@ export const useGameLogic = (mode = 'observation') => {
       return
     }
 
-    // Unify Observer Logic
+    // CASE: Observer + Normal Tile (Consumes moves and activates)
     if (t1?.special === 'observer' || t2?.special === 'observer') {
-      const observerPos = t1?.special === 'observer' ? tile1 : tile2
-      const otherPos = t1?.special === 'observer' ? tile2 : tile1
-      const otherTile = newGrid[otherPos.r][otherPos.c]
-      const otherType = otherTile?.type
+      const observerCurrentPos = t1?.special === 'observer' ? tile2 : tile1
+      const targetType = t1?.special === 'observer' ? t2?.type : t1?.type
       
-      let finalGrid = newGrid.map(row => [...row])
-      
-      if (otherTile?.special) {
-        // Observer + Special: Transform all of that color!
-        for (let r = 0; r < GRID_SIZE; r++) {
-          for (let c = 0; c < GRID_SIZE; c++) {
-            if (finalGrid[r][c]?.type === otherType) {
-              finalGrid[r][c] = { type: otherType, special: otherTile.special }
-            }
-          }
-        }
-      }
-
-      const result = await activateSpecial(finalGrid, observerPos.r, observerPos.c, otherType)
+      const { grid: finalGrid, clearedCount } = await activateSpecial(newGrid, observerCurrentPos.r, observerCurrentPos.c, targetType)
       if (mode === 'conviction') setMovesLeft(prev => prev - 1)
-      setGrid(result.grid)
-      setScore(prev => prev + result.clearedCount * 10)
-      await runGravity(result.grid)
+      setGrid(finalGrid)
+      setScore(prev => prev + clearedCount * 10)
+      await runGravity(finalGrid)
       return
     }
 

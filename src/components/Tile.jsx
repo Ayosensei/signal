@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { memo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 const TILE_ASSETS = [
   'Alpha.png',
@@ -9,7 +10,7 @@ const TILE_ASSETS = [
   'Mr Observer.png'
 ]
 
-const Tile = ({ 
+const Tile = memo(({ 
   r, 
   c, 
   tile, 
@@ -22,11 +23,34 @@ const Tile = ({
   onTouchStart, 
   onTouchEnd 
 }) => {
-  const tileType = tile ? tile.type : null
+  if (!tile) return null
+  const tileType = tile.type
 
   return (
-    <div
-      className={`tile tile-${tileType} ${tile?.special ? 'special-' + tile.special : ''} ${isSelected ? 'selected' : ''} ${tile === null ? 'cleared' : ''}`}
+    <motion.div
+      layout
+      key={tile.id}
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0, opacity: 0 }}
+      whileHover={{ scale: isProcessing ? 1 : 1.05 }}
+      whileTap={{ scale: isProcessing ? 1 : 0.9 }}
+      transition={{ 
+        type: 'spring', 
+        stiffness: 400, 
+        damping: 30,
+        layout: { 
+          type: 'spring', 
+          stiffness: 500, 
+          damping: 30,
+          mass: 0.8
+        }
+      }}
+      style={{
+        gridRow: r + 1,
+        gridColumn: c + 1
+      }}
+      className={`tile tile-${tileType} ${tile?.special ? 'special-' + tile.special : ''} ${isSelected ? 'selected' : ''}`}
       onClick={() => onClick(r, c)}
       draggable={!isProcessing}
       onDragStart={(e) => onDragStart(e, r, c)}
@@ -46,8 +70,8 @@ const Tile = ({
           />
         )}
       </div>
-    </div>
+    </motion.div>
   )
-}
+})
 
 export default Tile

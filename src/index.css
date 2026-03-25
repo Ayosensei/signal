@@ -341,8 +341,8 @@ body {
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  will-change: transform;
 }
 
 .tile:hover {
@@ -833,9 +833,4 @@ body {
   100% { border-color: #C084FC; box-shadow: 0 0 20px #C084FC; }
 }
 
-/* Activation Effects (Placeholder for future JS-triggered animations) */
-.cleared {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: scale(0);
-  opacity: 0;
-}
+/* Activation Effects */
