@@ -17,11 +17,8 @@ const Tile = memo(({
   isSelected, 
   isProcessing, 
   onClick, 
-  onDragStart, 
-  onDragOver, 
-  onDrop, 
-  onTouchStart, 
-  onTouchEnd 
+  onPointerDown,
+  onPointerEnter
 }) => {
   if (!tile) return null
   const tileType = tile.type
@@ -34,30 +31,29 @@ const Tile = memo(({
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0, opacity: 0 }}
       whileHover={{ scale: isProcessing ? 1 : 1.05 }}
-      whileTap={{ scale: isProcessing ? 1 : 0.9 }}
+      whileTap={{ scale: isProcessing ? 1 : 0.95 }}
       transition={{ 
         type: 'spring', 
-        stiffness: 400, 
-        damping: 30,
+        stiffness: 500, 
+        damping: 35,
+        mass: 0.5,
         layout: { 
           type: 'spring', 
-          stiffness: 500, 
-          damping: 30,
-          mass: 0.8
+          stiffness: 600, 
+          damping: 40,
+          mass: 0.5
         }
       }}
       style={{
         gridRow: r + 1,
-        gridColumn: c + 1
+        gridColumn: c + 1,
+        touchAction: 'none'
       }}
       className={`tile tile-${tileType} ${tile?.special ? 'special-' + tile.special : ''} ${isSelected ? 'selected' : ''}`}
       onClick={() => onClick(r, c)}
-      draggable={!isProcessing}
-      onDragStart={(e) => onDragStart(e, r, c)}
-      onDragOver={onDragOver}
-      onDrop={(e) => onDrop(e, r, c)}
-      onTouchStart={(e) => onTouchStart(e, r, c)}
-      onTouchEnd={onTouchEnd}
+      onPointerDown={() => onPointerDown(r, c)}
+      onPointerEnter={() => onPointerEnter(r, c)}
+      draggable={false}
       data-row={r}
       data-col={c}
     >
@@ -67,6 +63,7 @@ const Tile = memo(({
             src={`/tiles/${TILE_ASSETS[tileType]}`}
             alt={`Tile ${tileType}`}
             className="tile-img"
+            draggable={false}
           />
         )}
       </div>
