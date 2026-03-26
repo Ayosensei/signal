@@ -28,9 +28,14 @@ const Tile = memo(({
       layout
       key={tile.id}
       initial={{ scale: 0.9, opacity: 0, y: -20 }}
-      animate={{ scale: 1, opacity: 1, y: 0 }}
+      animate={{ 
+        scale: isSelected ? 1.15 : 1, 
+        opacity: 1, 
+        y: 0,
+        zIndex: isSelected ? 10 : 1
+      }}
       exit={{ scale: 0.9, opacity: 0 }}
-      whileHover={{ scale: isProcessing ? 1 : 1.05 }}
+      whileHover={{ scale: isProcessing ? 1 : (isSelected ? 1.15 : 1.05) }}
       whileTap={{ scale: isProcessing ? 1 : 0.95 }}
       transition={{ 
         type: 'spring', 
