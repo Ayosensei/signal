@@ -52,7 +52,7 @@ const Tile = memo(({
         gridColumn: c + 1,
         touchAction: 'none'
       }}
-      className={`tile tile-${tileType} ${tile?.special ? 'special-' + tile.special : ''} ${isSelected ? 'selected' : ''}`}
+      className={`tile tile-${tileType} ${tile?.special ? 'special-' + tile.special : ''} ${tileType === 5 ? 'special-observer' : ''} ${isSelected ? 'selected' : ''}`}
       onPointerDown={(e) => onPointerDown(e, r, c)}
       draggable={false}
       data-row={r}

@@ -5,6 +5,7 @@ const NORMAL_TILE_TYPES = 5
 const OBSERVER_TYPE = 5
 
 export const useGameLogic = (mode = 'observation', levelConfig = null) => {
+  // --- 1. STATE HOOKS ---
   const [grid, setGrid] = useState([])
   const [score, setScore] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -15,19 +16,30 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
   const [isPaused, setIsPaused] = useState(false)
   const [currentSequence, setCurrentSequence] = useState(levelConfig)
   
+  // --- 2. REF HOOKS ---
   const tileIdRef = useRef(0)
-  const getNextId = useCallback(() => `tile-${tileIdRef.current++}`, [])
+  const scoreRef = useRef(0) // Track score for win detection within async loops
 
-  const findMatchGroups = useCallback((currentGrid) => {
+  // --- 3. CORE UTILITIES (NO HOOKS) ---
+  const getNextId = () => `tile-${tileIdRef.current++}`
+  
+  const getRandomTileType = () => {
+    const r = Math.random()
+    if (r < 0.18) return 0
+    if (r < 0.43) return 1 // Clover (25%)
+    if (r < 0.62) return 2
+    if (r < 0.81) return 3
+    return 4
+  }
+
+  const findMatchGroups = (currentGrid) => {
     const horizontalMatches = []
     const verticalMatches = []
-
     for (let r = 0; r < GRID_SIZE; r++) {
       let matchCount = 1
       for (let c = 0; c < GRID_SIZE; c++) {
         const current = currentGrid[r][c]
         const next = c < GRID_SIZE - 1 ? currentGrid[r][c + 1] : null
-
         if (current && next && current.type === next.type && current.type !== null && current.type !== OBSERVER_TYPE) {
           matchCount++
         } else {
@@ -40,13 +52,11 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
         }
       }
     }
-
     for (let c = 0; c < GRID_SIZE; c++) {
       let matchCount = 1
       for (let r = 0; r < GRID_SIZE; r++) {
         const current = currentGrid[r][c]
         const next = r < GRID_SIZE - 1 ? currentGrid[r + 1][c] : null
-
         if (current && next && current.type === next.type && current.type !== null && current.type !== OBSERVER_TYPE) {
           matchCount++
         } else {
@@ -59,31 +69,22 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
         }
       }
     }
-
     const allLines = [...horizontalMatches, ...verticalMatches]
     if (allLines.length === 0) return []
-
     const groups = []
     const visitedIndices = new Set()
-
     for (let i = 0; i < allLines.length; i++) {
       if (visitedIndices.has(i)) continue
-
       const currentGroup = new Set(allLines[i].map(pt => `${pt.r},${pt.c}`))
       const type = currentGrid[allLines[i][0].r][allLines[i][0].c].type
       let addedToGroup = true
-
       const linesInCurrentGroup = [allLines[i]]
-
       while (addedToGroup) {
         addedToGroup = false
         for (let j = i + 1; j < allLines.length; j++) {
           if (visitedIndices.has(j)) continue
-          const otherLineType = currentGrid[allLines[j][0].r][allLines[j][0].c].type
-          if (type !== otherLineType) continue
-
-          const hasIntersection = allLines[j].some(pt => currentGroup.has(`${pt.r},${pt.c}`))
-          if (hasIntersection) {
+          if (type !== currentGrid[allLines[j][0].r][allLines[j][0].c].type) continue
+          if (allLines[j].some(pt => currentGroup.has(`${pt.r},${pt.c}`))) {
             allLines[j].forEach(pt => currentGroup.add(`${pt.r},${pt.c}`))
             linesInCurrentGroup.push(allLines[j])
             visitedIndices.add(j)
@@ -91,43 +92,220 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
           }
         }
       }
-
-      // Metadata for special tile spawning
       const groupCoords = Array.from(currentGroup).map(str => {
         const [r, c] = str.split(',').map(Number)
         return { r, c }
       })
-
       const maxLineLength = Math.max(...linesInCurrentGroup.map(l => l.length))
       const longestLine = linesInCurrentGroup.find(l => l.length === maxLineLength)
       const orientation = horizontalMatches.includes(longestLine) ? 'horizontal' : 'vertical'
-      
       const hasIntersection = linesInCurrentGroup.length > 1 && 
         horizontalMatches.some(h => linesInCurrentGroup.includes(h)) && 
         verticalMatches.some(v => linesInCurrentGroup.includes(v))
+      groups.push({ coords: groupCoords, type, maxLineLength, orientation, hasIntersection })
+    }
+    return groups
+  }
 
-      groups.push({
-        coords: groupCoords,
-        type: type,
-        maxLineLength,
-        orientation,
-        hasIntersection
+  // --- 4. THE CHAIN PROCESSOR (Unified Logic) ---
+  const processGridLogic = useCallback(async (initialGrid, interactionTile = null) => {
+    let currentGrid = initialGrid.map(row => [...row])
+    let totalPoints = 0
+
+    const triggerSpecial = (r, c, special, type, grid) => {
+      const affected = new Set()
+      affected.add(`${r},${c}`)
+      if (special === 'linear-h') for (let i = 0; i < GRID_SIZE; i++) affected.add(`${r},${i}`)
+      else if (special === 'linear-v') for (let i = 0; i < GRID_SIZE; i++) affected.add(`${i},${c}`)
+      else if (special === 'pulse') {
+        for (let i = r - 1; i <= r + 1; i++) 
+          for (let j = c - 1; j <= c + 1; j++) 
+            if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) affected.add(`${i},${j}`)
+      }
+      else if (special === 'observer') {
+        for (let i = 0; i < GRID_SIZE; i++) 
+          for (let j = 0; j < GRID_SIZE; j++) 
+            if (grid[i][j]?.type === type) affected.add(`${i},${j}`)
+      }
+      return Array.from(affected).map(s => {
+        const [ar, ac] = s.split(',').map(Number)
+        return { r: ar, c: ac }
       })
     }
 
-    return groups
-  }, [])
+    const evaluate = async (gridState, firstTrigger = false) => {
+      const groups = findMatchGroups(gridState)
+      if (groups.length === 0) {
+        // Check for empty spaces anyway (critical for Observer clears)
+        const hasNulls = gridState.some(row => row.some(tile => tile === null))
+        if (hasNulls) {
+          await applyGravity(gridState)
+        } else {
+          if (mode === 'conviction' && movesLeft <= 0 && scoreRef.current < (currentSequence?.objective?.target || 10000)) {
+            setIsGameOver(true)
+          }
+          setIsProcessing(false)
+        }
+        return
+      }
+
+      const nextGrid = gridState.map(row => [...row])
+      const toClear = new Set()
+      
+      groups.forEach(group => {
+        totalPoints += group.coords.length * 100
+        let spawnPos = group.coords[0]
+        if (firstTrigger && interactionTile) {
+          const match = group.coords.find(p => p.r === interactionTile.r && p.c === interactionTile.c)
+          if (match) spawnPos = match
+        }
+
+        let spawnType = null
+      if (group.coords.length === 6) spawnType = 'observer'
+      else if (group.coords.length >= 5 || group.hasIntersection) spawnType = group.hasIntersection ? 'pulse' : 'observer'
+      else if (group.coords.length === 4) spawnType = group.orientation === 'horizontal' ? 'linear-v' : 'linear-h'
+
+        group.coords.forEach(({ r, c }) => {
+          const tile = gridState[r][c]
+          if (tile?.special) triggerSpecial(r, c, tile.special, tile.type, gridState).forEach(p => toClear.add(`${p.r},${p.c}`))
+          toClear.add(`${r},${c}`)
+        })
+
+        if (spawnType) {
+          nextGrid[spawnPos.r][spawnPos.c] = {
+            id: getNextId(),
+            type: spawnType === 'observer' && group.coords.length >= 6 ? OBSERVER_TYPE : group.type,
+            special: spawnType
+          }
+        }
+      })
+
+      toClear.forEach(s => {
+        const [r, c] = s.split(',').map(Number)
+        if (!nextGrid[r][c] || nextGrid[r][c].id === gridState[r][c]?.id) nextGrid[r][c] = null
+      })
+
+      setScore(prev => {
+        const nextScore = prev + totalPoints
+        scoreRef.current = nextScore
+        if (currentSequence && nextScore >= currentSequence.objective.target) setIsWin(true)
+        return nextScore
+      })
+      totalPoints = 0 // Reset for next cascade
+      
+      setGrid(nextGrid)
+      await new Promise(res => setTimeout(res, 300))
+      await applyGravity(nextGrid)
+    }
+
+    const applyGravity = async (gridState) => {
+      const nextGrid = gridState.map(row => [...row])
+      let changed = false
+      for (let c = 0; c < GRID_SIZE; c++) {
+        let empty = -1
+        for (let r = GRID_SIZE - 1; r >= 0; r--) {
+          if (nextGrid[r][c] === null && empty === -1) empty = r
+          else if (nextGrid[r][c] !== null && empty !== -1) {
+            nextGrid[empty][c] = nextGrid[r][c]
+            nextGrid[r][c] = null
+            empty--
+            changed = true
+          }
+        }
+        for (let r = 0; r < GRID_SIZE; r++) {
+          if (nextGrid[r][c] === null) {
+            nextGrid[r][c] = { id: getNextId(), type: getRandomTileType(), special: null }
+            changed = true
+          }
+        }
+      }
+      if (changed) {
+        setGrid(nextGrid)
+        await new Promise(res => setTimeout(res, 300))
+        await evaluate(nextGrid)
+      }
+    }
+
+    await evaluate(currentGrid, true)
+  }, [mode, currentSequence, movesLeft])
+
+  // --- 5. SWAP HOOK ---
+  const swapTiles = useCallback(async (tile1, tile2) => {
+    if (isGameOver || isPaused || isProcessing) return
+    setIsProcessing(true)
+    if (mode === 'conviction' && movesLeft <= 0) { setIsProcessing(false); return; }
+
+    const t1 = grid[tile1.r][tile1.c]
+    const t2 = grid[tile2.r][tile2.c]
+
+    if (t1.type === OBSERVER_TYPE || t2.type === OBSERVER_TYPE) {
+      if (mode === 'conviction') setMovesLeft(prev => prev - 1)
+      const observer = t1.type === OBSERVER_TYPE ? t1 : t2
+      const target = t1.type === OBSERVER_TYPE ? t2 : t1
+      let finalGrid = grid.map(row => [...row])
+      finalGrid[tile1.r][tile1.c] = null; finalGrid[tile2.r][tile2.c] = null;
+
+      if (target.type === OBSERVER_TYPE) {
+        for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) finalGrid[r][c] = null
+      } else if (target.special) {
+        for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) {
+          if (finalGrid[r][c]?.type === target.type) finalGrid[r][c].special = target.special
+        }
+      } else {
+        for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) {
+          if (finalGrid[r][c]?.type === target.type) finalGrid[r][c] = null
+        }
+      }
+      setGrid(finalGrid)
+      await new Promise(res => setTimeout(res, 300))
+      await processGridLogic(finalGrid)
+      return
+    }
+
+    const nextGrid = grid.map(row => [...row])
+    nextGrid[tile1.r][tile1.c] = t2; nextGrid[tile2.r][tile2.c] = t1;
+    setGrid(nextGrid)
+    await new Promise(res => setTimeout(res, 300))
+
+    if (findMatchGroups(nextGrid).length > 0) {
+      if (mode === 'conviction') setMovesLeft(prev => prev - 1)
+      await processGridLogic(nextGrid, tile2)
+    } else {
+      const reverted = grid.map(row => [...row])
+      setGrid(reverted)
+      await new Promise(res => setTimeout(res, 300))
+      setIsProcessing(false)
+    }
+  }, [grid, isGameOver, isPaused, isProcessing, mode, movesLeft, processGridLogic])
+
+  // --- 6. INITIALIZATION & TIMER ---
+  const generateBoard = useCallback(() => {
+    let newGrid = []
+    for (let r = 0; r < GRID_SIZE; r++) {
+      const row = []
+      for (let c = 0; c < GRID_SIZE; c++) row.push({ id: getNextId(), type: getRandomTileType(), special: null })
+      newGrid.push(row)
+    }
+    while (findMatchGroups(newGrid).length > 0) {
+      for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) {
+        newGrid[r][c] = { id: getNextId(), type: getRandomTileType(), special: null }
+      }
+    }
+    setGrid(newGrid); setScore(0); scoreRef.current = 0;
+    setTimer(currentSequence?.time || 60); setMovesLeft(currentSequence?.moves || 25);
+    setIsGameOver(false); setIsWin(false); setIsProcessing(false);
+  }, [currentSequence])
+
+  useEffect(() => {
+    generateBoard()
+  }, [generateBoard])
 
   useEffect(() => {
     const gameMode = currentSequence?.mode || mode
     if (gameMode === 'signal' && !isGameOver && !isWin && !isPaused) {
       const interval = setInterval(() => {
         setTimer(prev => {
-          if (prev <= 1) {
-            setIsGameOver(true)
-            clearInterval(interval)
-            return 0
-          }
+          if (prev <= 1) { setIsGameOver(true); clearInterval(interval); return 0; }
           return prev - 1
         })
       }, 1000)
@@ -135,385 +313,8 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
     }
   }, [mode, isGameOver, isWin, currentSequence, isPaused])
 
-  const generateBoard = useCallback(() => {
-    const newGrid = []
-    for (let r = 0; r < GRID_SIZE; r++) {
-      const row = []
-      for (let c = 0; c < GRID_SIZE; c++) {
-        row.push({ 
-          id: getNextId(), 
-          type: Math.floor(Math.random() * NORMAL_TILE_TYPES), 
-          special: null 
-        })
-      }
-      newGrid.push(row)
-    }
-
-    while (findMatchGroups(newGrid).length > 0) {
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          newGrid[r][c] = { 
-            id: getNextId(), 
-            type: Math.floor(Math.random() * NORMAL_TILE_TYPES), 
-            special: null 
-          }
-        }
-      }
-    }
-    setGrid(newGrid)
-    setScore(0)
-    
-    if (currentSequence) {
-      setTimer(currentSequence.time || 60)
-      setMovesLeft(currentSequence.moves || 25)
-    } else {
-      setTimer(60)
-      setMovesLeft(25)
-    }
-    
-    setIsGameOver(false)
-    setIsWin(false)
-  }, [findMatchGroups, currentSequence, getNextId])
-
-  // Generate board when level or mode changes
-  useEffect(() => {
-    setCurrentSequence(levelConfig)
-  }, [levelConfig])
-
-  useEffect(() => {
-    generateBoard()
-  }, [generateBoard, mode])
-
-  const activateSpecial = async (currentGrid, r, c, tileType) => {
-    let newGrid = currentGrid.map(row => [...row])
-    let tilesToProcess = [{ r, c }]
-    let processedTiles = new Set()
-    let finalCoordsToClear = []
-
-    while (tilesToProcess.length > 0) {
-      const { r: curR, c: curC } = tilesToProcess.shift()
-      const key = `${curR},${curC}`
-      if (processedTiles.has(key)) continue
-      processedTiles.add(key)
-
-      const tile = newGrid[curR][curC]
-      if (!tile || !tile.special) {
-        finalCoordsToClear.push({ r: curR, c: curC })
-        continue
-      }
-
-      finalCoordsToClear.push({ r: curR, c: curC })
-      let area = []
-
-      if (tile.special === 'linear-h') {
-        for (let i = 0; i < GRID_SIZE; i++) area.push({ r: curR, c: i })
-      } else if (tile.special === 'linear-v') {
-        for (let i = 0; i < GRID_SIZE; i++) area.push({ r: i, c: curC })
-      } else if (tile.special === 'pulse') {
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            const nr = curR + dr, nc = curC + dc
-            if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) area.push({ r: nr, c: nc })
-          }
-        }
-      } else if (tile.special === 'observer') {
-        const targetType = (tileType !== undefined && tileType !== OBSERVER_TYPE) 
-          ? tileType 
-          : Math.floor(Math.random() * NORMAL_TILE_TYPES)
-        
-        for (let i = 0; i < GRID_SIZE; i++) {
-          for (let j = 0; j < GRID_SIZE; j++) {
-            if (newGrid[i][j]?.type === targetType) area.push({ r: i, c: j })
-          }
-        }
-      }
-
-      area.forEach(pt => {
-        const ptKey = `${pt.r},${pt.c}`
-        if (!processedTiles.has(ptKey)) {
-          if (newGrid[pt.r][pt.c]?.special) {
-            tilesToProcess.push(pt)
-          } else {
-            finalCoordsToClear.push(pt)
-            processedTiles.add(ptKey)
-          }
-        }
-      })
-    }
-
-    finalCoordsToClear.forEach(({ r: fr, c: fc }) => {
-      newGrid[fr][fc] = null
-    })
-
-    return { grid: newGrid, clearedCount: finalCoordsToClear.length }
-  }
-
-  const runMatches = async (currentGrid, swapPos1 = null, swapPos2 = null, cascadeCount = 1) => {
-    const groups = findMatchGroups(currentGrid)
-    if (groups.length === 0) {
-      setIsProcessing(false)
-      return
-    }
-
-    setIsProcessing(true)
-
-    let newGrid = currentGrid.map(row => [...row])
-    let clearedCount = 0
-    let pointsFromSpecials = 0
-
-    // Check for special tiles in the cleared areas BEFORE clearing them
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
-        const isMatched = groups.some(g => g.coords.some(pt => pt.r === r && pt.c === c))
-        if (isMatched && newGrid[r][c]?.special) {
-          const result = await activateSpecial(newGrid, r, c, newGrid[r][c].type)
-          newGrid = result.grid
-          clearedCount += result.clearedCount
-          pointsFromSpecials += result.clearedCount * 15 // Bonus for special tile clears
-        }
-      }
-    }
-
-    let pointsFromMatches = 0
-    groups.forEach(group => {
-      const basePoints = group.coords.length * 10
-      // Match length multiplier: 3=1x, 4=2x, 5=4x
-      const lengthMult = group.maxLineLength === 4 ? 2 : group.maxLineLength >= 5 ? 4 : 1
-      pointsFromMatches += basePoints * lengthMult
-      
-      let specialToSpawn = null
-      if (group.maxLineLength >= 5 && !group.hasIntersection) {
-        specialToSpawn = 'observer'
-      } else if (group.hasIntersection) {
-        specialToSpawn = 'pulse'
-      } else if (group.maxLineLength === 4) {
-        specialToSpawn = group.orientation === 'horizontal' ? 'linear-v' : 'linear-h'
-      }
-
-      let spawnCoord = group.coords[0]
-      if (swapPos1 && swapPos2) {
-        const inGroup1 = group.coords.some(pt => pt.r === swapPos1.r && pt.c === swapPos1.c)
-        const inGroup2 = group.coords.some(pt => pt.r === swapPos2.r && pt.c === swapPos2.c)
-        if (inGroup1) spawnCoord = swapPos1
-        else if (inGroup2) spawnCoord = swapPos2
-      }
-
-      group.coords.forEach(({ r, c }) => {
-        if (newGrid[r][c] !== null) newGrid[r][c] = null
-      })
-
-      if (specialToSpawn !== null) {
-        newGrid[spawnCoord.r][spawnCoord.c] = { 
-          id: getNextId(),
-          type: specialToSpawn === 'observer' ? OBSERVER_TYPE : group.type, 
-          special: specialToSpawn 
-        }
-      }
-    })
-
-    setGrid(newGrid)
-    
-    // Final score calculation for this step
-    const cascadeMult = 1 + (cascadeCount - 1) * 0.5
-    const totalAdded = Math.round((pointsFromMatches + pointsFromSpecials) * cascadeMult)
-
-    setScore(currentScore => {
-      const totalScore = currentScore + totalAdded
-
-      if (currentSequence && currentSequence.objective.type === 'score') {
-        if (totalScore >= currentSequence.objective.target && !isWin) {
-          setIsWin(true)
-          // Award end-of-level bonus if winning
-          const bonus = (currentSequence.mode === 'conviction' ? movesLeft * 100 : timer * 50)
-          return totalScore + bonus
-        }
-      }
-      return totalScore
-    })
-
-    if (isWin) {
-      setIsProcessing(false)
-      return
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 200))
-    await runGravity(newGrid, cascadeCount)
-  }
-
-  const runGravity = async (currentGrid, cascadeCount = 1) => {
-    const newGrid = currentGrid.map(row => [...row])
-
-    for (let c = 0; c < GRID_SIZE; c++) {
-      let emptyRow = GRID_SIZE - 1
-      for (let r = GRID_SIZE - 1; r >= 0; r--) {
-        if (newGrid[r][c] !== null) {
-          const val = newGrid[r][c]
-          newGrid[r][c] = null
-          newGrid[emptyRow][c] = val
-          emptyRow--
-        }
-      }
-    }
-
-    for (let c = 0; c < GRID_SIZE; c++) {
-      for (let r = 0; r < GRID_SIZE; r++) {
-        if (newGrid[r][c] === null) {
-          newGrid[r][c] = { 
-            id: getNextId(),
-            type: Math.floor(Math.random() * NORMAL_TILE_TYPES), 
-            special: null 
-          }
-        }
-      }
-    }
-
-    setGrid(newGrid)
-    await new Promise(resolve => setTimeout(resolve, 250)) 
-
-    await runMatches(newGrid, null, null, cascadeCount + 1)
-  }
-
-  const swapTiles = useCallback(async (tile1, tile2) => {
-    if (isGameOver || isPaused) return
-    setIsProcessing(true)
-    
-    if (mode === 'conviction' && movesLeft <= 0) {
-      setIsGameOver(true)
-      setIsProcessing(false)
-      return
-    }
-
-    let newGrid = grid.map(row => [...row])
-    const t1 = newGrid[tile1.r][tile1.c]
-    const t2 = newGrid[tile2.r][tile2.c]
-    
-    newGrid[tile1.r][tile1.c] = t2
-    newGrid[tile2.r][tile2.c] = t1
-
-    // Check for special match combinations
-    const isT1Special = t1?.special
-    const isT2Special = t2?.special
-
-    if (isT1Special && isT2Special) {
-      if (mode === 'conviction') setMovesLeft(prev => prev - 1)
-      
-      let finalGrid = newGrid.map(row => [...row])
-      finalGrid[tile1.r][tile1.c] = null
-      finalGrid[tile2.r][tile2.c] = null
-      
-      let coordsToClear = []
-      let clearedCountFromCombo = 0
-      
-      // CASE 1: Pulse + Pulse -> 5x5 Explosion
-      if (t1.special === 'pulse' && t2.special === 'pulse') {
-        const centerR = tile1.r, centerC = tile1.c
-        for (let dr = -2; dr <= 2; dr++) {
-          for (let dc = -2; dc <= 2; dc++) {
-            const nr = centerR + dr, nc = centerC + dc
-            if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) coordsToClear.push({ r: nr, c: nc })
-          }
-        }
-      }
-      // CASE 2: Stripe + Pulse -> 3 Rows + 3 Columns Clear
-      else if ((t1.special?.includes('linear') && t2.special === 'pulse') || 
-               (t2.special?.includes('linear') && t1.special === 'pulse')) {
-        const centerR = tile1.r, centerC = tile1.c
-        for (let i = 0; i < GRID_SIZE; i++) {
-          for (let offset = -1; offset <= 1; offset++) {
-            const r1 = centerR + offset, c1 = centerC + offset
-            if (r1 >= 0 && r1 < GRID_SIZE) coordsToClear.push({ r: r1, c: i }) // 3 Rows
-            if (c1 >= 0 && c1 < GRID_SIZE) coordsToClear.push({ r: i, c: c1 }) // 3 Cols
-          }
-        }
-      }
-      // CASE 3: Stripe + Stripe -> Row + Column (Cross)
-      else if (t1.special?.includes('linear') && t2.special?.includes('linear')) {
-        for (let i = 0; i < GRID_SIZE; i++) {
-          coordsToClear.push({ r: tile1.r, c: i }) // Row
-          coordsToClear.push({ r: i, c: tile1.c }) // Col
-        }
-      }
-      // CASE 4: Double Observer -> Clear Entire Board
-      else if (t1.special === 'observer' && t2.special === 'observer') {
-        for (let i = 0; i < GRID_SIZE; i++) {
-          for (let j = 0; j < GRID_SIZE; j++) coordsToClear.push({ r: i, c: j })
-        }
-      }
-      // CASE 5: Observer + Special -> Transform all color tiles then activate
-      else if (t1.special === 'observer' || t2.special === 'observer') {
-        const observerCurrentPos = t1.special === 'observer' ? tile2 : tile1
-        const otherType = t1.special === 'observer' ? t2.type : t1.type
-        const otherSpecial = t1.special === 'observer' ? t2.special : t1.special
-        
-        for (let r = 0; r < GRID_SIZE; r++) {
-          for (let c = 0; c < GRID_SIZE; c++) {
-            if (finalGrid[r][c]?.type === otherType) {
-              finalGrid[r][c] = { ...finalGrid[r][c], special: otherSpecial }
-            }
-          }
-        }
-        const result = await activateSpecial(finalGrid, observerCurrentPos.r, observerCurrentPos.c, otherType)
-        finalGrid = result.grid
-        clearedCountFromCombo = result.clearedCount
-      }
-      // Default: Just activate both
-      else {
-        const res1 = await activateSpecial(finalGrid, tile1.r, tile1.c, t2?.type)
-        const res2 = await activateSpecial(res1.grid, tile2.r, tile2.c, t1?.type)
-        finalGrid = res2.grid
-        clearedCountFromCombo = res1.clearedCount + res2.clearedCount
-      }
-
-      if (coordsToClear.length > 0) {
-        coordsToClear.forEach(({ r, c }) => {
-          finalGrid[r][c] = null
-        })
-      }
-
-      setGrid(finalGrid)
-      setScore(prev => prev + (coordsToClear.length || clearedCountFromCombo || 25) * 10)
-      await runGravity(finalGrid)
-      return
-    }
-
-    // CASE: Observer + Normal Tile (Consumes moves and activates)
-    if (t1?.special === 'observer' || t2?.special === 'observer') {
-      const observerCurrentPos = t1?.special === 'observer' ? tile2 : tile1
-      const targetType = t1?.special === 'observer' ? t2?.type : t1?.type
-      
-      const { grid: finalGrid, clearedCount } = await activateSpecial(newGrid, observerCurrentPos.r, observerCurrentPos.c, targetType)
-      if (mode === 'conviction') setMovesLeft(prev => prev - 1)
-      setGrid(finalGrid)
-      setScore(prev => prev + clearedCount * 10)
-      await runGravity(finalGrid)
-      return
-    }
-
-    const groups = findMatchGroups(newGrid)
-    if (groups.length > 0) {
-      if (mode === 'conviction') setMovesLeft(prev => prev - 1)
-      setGrid(newGrid)
-      await runMatches(newGrid, tile1, tile2)
-    } else {
-      setGrid(newGrid)
-      await new Promise(resolve => setTimeout(resolve, 200))
-      setGrid(grid.map(row => [...row]))
-      setIsProcessing(false)
-    }
-  }, [grid, mode, movesLeft, isGameOver, findMatchGroups])
-
   return {
-    grid,
-    score,
-    timer,
-    movesLeft,
-    isGameOver,
-    isWin,
-    isProcessing,
-    isPaused,
-    setIsPaused,
-    swapTiles,
-    generateBoard,
-    currentSequence
+    grid, score, timer, movesLeft, isGameOver, isWin, isProcessing, isPaused,
+    setIsPaused, swapTiles, generateBoard, currentSequence
   }
 }

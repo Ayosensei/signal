@@ -16,26 +16,26 @@ import GameMenu from './components/GameMenu'
 import { AnimatePresence } from 'framer-motion'
 
 function App() {
+  // 1. STATE HOOKS
   const [view, setView] = useState('splash')
   const [showAbout, setShowAbout] = useState(true)
   const [showGameMenu, setShowGameMenu] = useState(false)
   const [gameMode, setGameMode] = useState('observation')
   const [selectedSequence, setSelectedSequence] = useState(null)
-  
+  const [unlockedSequence, setUnlockedSequence] = useState(() => {
+    const saved = localStorage.getItem('signal_unlocked_sequence')
+    return saved ? parseInt(saved, 10) : 1
+  })
+  const [highScore, setHighScore] = useState(() => {
+    const saved = localStorage.getItem('signal_high_score')
+    return saved ? parseInt(saved, 10) : 0
+  })
   const [audioSettings, setAudioSettings] = useState(() => {
     const saved = localStorage.getItem('signal_audio_settings')
     return saved ? JSON.parse(saved) : { volume: 80, sfx: true, music: true, shake: true }
   })
 
-  useEffect(() => {
-    localStorage.setItem('signal_audio_settings', JSON.stringify(audioSettings))
-  }, [audioSettings])
-  
-  const [unlockedSequence, setUnlockedSequence] = useState(() => {
-    const saved = localStorage.getItem('signal_unlocked_sequence')
-    return saved ? parseInt(saved, 10) : 1
-  })
-
+  // 2. CUSTOM HOOKS (Stable Order)
   const { 
     grid, 
     score, 
@@ -50,13 +50,12 @@ function App() {
     generateBoard,
     currentSequence 
   } = useGameLogic(gameMode, selectedSequence)
-  
-  const [highScore, setHighScore] = useState(() => {
-    const saved = localStorage.getItem('signal_high_score')
-    return saved ? parseInt(saved, 10) : 0
-  })
 
-  // Persist high score and unlocked level
+  // 3. EFFECT HOOKS
+  useEffect(() => {
+    localStorage.setItem('signal_audio_settings', JSON.stringify(audioSettings))
+  }, [audioSettings])
+
   useEffect(() => {
     if (score > highScore) {
       setHighScore(score)
@@ -78,6 +77,8 @@ function App() {
       setIsPaused(false)
     }
   }, [view, showGameMenu, setIsPaused])
+
+  // 4. CALLBACK HANDLERS
   const handleSetView = (newView) => {
     if (newView === 'about') {
       setShowAbout(true)
