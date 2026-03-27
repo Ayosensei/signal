@@ -11,12 +11,25 @@ import SplashScreen from './components/SplashScreen'
 import AboutPage from './components/AboutPage'
 import Navigation from './components/Navigation'
 import { SEQUENCES } from './data/levels'
+import SettingsPage from './components/SettingsPage'
+import GameMenu from './components/GameMenu'
+import { AnimatePresence } from 'framer-motion'
 
 function App() {
   const [view, setView] = useState('splash')
   const [showAbout, setShowAbout] = useState(true)
+  const [showGameMenu, setShowGameMenu] = useState(false)
   const [gameMode, setGameMode] = useState('observation')
   const [selectedSequence, setSelectedSequence] = useState(null)
+  
+  const [audioSettings, setAudioSettings] = useState(() => {
+    const saved = localStorage.getItem('signal_audio_settings')
+    return saved ? JSON.parse(saved) : { volume: 80, sfx: true, music: true, shake: true }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('signal_audio_settings', JSON.stringify(audioSettings))
+  }, [audioSettings])
   
   const [unlockedSequence, setUnlockedSequence] = useState(() => {
     const saved = localStorage.getItem('signal_unlocked_sequence')
@@ -63,6 +76,9 @@ function App() {
     } else if (newView === 'sequence-hub') {
       setView('sequence-hub')
       setShowAbout(false)
+    } else if (newView === 'settings') {
+      setView('settings')
+      setShowAbout(false)
     } else {
       if (newView === 'splash') setSelectedSequence(null)
       setView(newView)
@@ -70,10 +86,37 @@ function App() {
     }
   }
 
+  const resetProgress = () => {
+    if (window.confirm("ARE_YOU_SURE_YOU_WANT_TO_PURGE_ALL_DATA?")) {
+      localStorage.removeItem('signal_unlocked_sequence')
+      setUnlockedSequence(1)
+      setView('splash')
+    }
+  }
+
   const startSequence = (seq) => {
     setSelectedSequence(seq)
     setGameMode(seq.mode)
     setView('game')
+    setShowGameMenu(false)
+  }
+
+  const handleMenuAction = (action) => {
+    setShowGameMenu(false)
+    if (action === 'resume') return
+    if (action === 'settings') {
+      setView('settings')
+      return
+    }
+    if (action === 'hub') {
+      setView('sequence-hub')
+      return
+    }
+    if (action === 'home') {
+      setView('splash')
+      setSelectedSequence(null)
+      return
+    }
   }
 
   const renderContent = () => {
@@ -222,18 +265,35 @@ function App() {
           </div>
           <div className="header-right">
             <div className="header-icon" onClick={() => generateBoard()}>↺</div>
-            <div className="header-icon" onClick={() => setView('sequence-hub')}>≡</div>
+            <div className="header-icon" onClick={() => setShowGameMenu(true)}>≡</div>
           </div>
         </div>
       )}
 
       {renderContent()}
 
-      <Navigation view={view} setView={handleSetView} />
+      {view !== 'game' && <Navigation view={view} setView={handleSetView} />}
 
       {showAbout && (
         <AboutPage onClose={() => setShowAbout(false)} />
       )}
+
+      <AnimatePresence>
+        {view === 'settings' && (
+          <SettingsPage 
+            audioSettings={audioSettings}
+            setAudioSettings={setAudioSettings}
+            onClose={() => setView(selectedSequence ? 'game' : 'splash')} 
+            onResetProgress={resetProgress} 
+          />
+        )}
+        {showGameMenu && (
+          <GameMenu 
+            onAction={handleMenuAction}
+            onClose={() => setShowGameMenu(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

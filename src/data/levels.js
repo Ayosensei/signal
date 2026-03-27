@@ -1,122 +1,122 @@
 export const SEQUENCES = [
   {
     id: 1,
-    name: "Signal Training",
-    description: "Establish a baseline connection. Reach the target score.",
+    name: "DIVINE TIMING",
+    description: "Pillar 01: Identification of the pattern before the noise. Establish your first connection to the signal.",
     mode: "conviction",
     moves: 25,
-    objective: { type: "score", target: 1500 },
+    objective: { type: "score", target: 2000 },
     difficulty: 1,
-    reward: "Basic Connectivity"
+    reward: "Pattern Recognition"
   },
   {
     id: 2,
-    name: "Frequency Alignment",
-    description: "Align the nodes precisely. Focus on Match-4 combinations.",
+    name: "RECOGNITION PHASE",
+    description: "The signal exists. Most look for luck; we look for truth. Synchronize with the core frequency.",
     mode: "conviction",
     moves: 20,
-    objective: { type: "score", target: 2500 },
+    objective: { type: "score", target: 3500 },
     difficulty: 1,
-    reward: "Bandwidth Expansion"
+    reward: "Frequency Lock"
   },
   {
     id: 3,
-    name: "Resonance Boost",
-    description: "A faint signal detected. Recover more data.",
+    name: "COMMUNITY RESONANCE",
+    description: "Pillar 02: Collective consciousness focused on the long-term. Amplify the signal through the network.",
     mode: "signal",
     time: 60,
-    objective: { type: "score", target: 3000 },
+    objective: { type: "score", target: 4000 },
     difficulty: 2,
-    reward: "Signal Stability"
+    reward: "Collective Uplink"
   },
   {
     id: 4,
-    name: "Observer Protocol",
-    description: "The Mr. Observer node has been detected. Use its power.",
+    name: "NO RUG PROTOCOL",
+    description: "Pillar 03: Transparency is the foundation. Filter out the chaotic noise of temporary gains.",
     mode: "conviction",
     moves: 30,
-    objective: { type: "score", target: 5000 },
+    objective: { type: "score", target: 6000 },
     difficulty: 2,
-    reward: "Advanced Optics"
+    reward: "Foundation Security"
   },
   {
     id: 5,
-    name: "First Decryption",
-    description: "The first layer of encryption is thick. Breakthrough required.",
+    name: "CONVICTION TEST",
+    description: "Pillar 04: Conviction is the highest form of intelligence. Hold the line against market volatility.",
     mode: "conviction",
-    moves: 15,
-    objective: { type: "score", target: 4000 },
+    moves: 18,
+    objective: { type: "score", target: 5500 },
     difficulty: 3,
-    reward: "Encrypted Access"
+    reward: "Diamond Handshake"
   },
   {
     id: 6,
-    name: "Noise Filtering",
-    description: "Heavy interference detected. Keep the signal alive.",
+    name: "QUIET SIGNAL",
+    description: "Pillar 05: The loudest rooms are empty. Find the truth in the silence of the deep network.",
     mode: "signal",
     time: 45,
-    objective: { type: "score", target: 4500 },
+    objective: { type: "score", target: 5000 },
     difficulty: 3,
-    reward: "Clear Channel"
+    reward: "Silence Protocol"
   },
   {
     id: 7,
-    name: "System Handshake",
-    description: "Synchronizing with the secure server.",
+    name: "TOKENOMIC PULSE",
+    description: "Analyzing the flow of value. Stabilize the liquidity nodes to prepare for mass expansion.",
     mode: "conviction",
     moves: 25,
-    objective: { type: "score", target: 6000 },
+    objective: { type: "score", target: 7000 },
     difficulty: 3,
-    reward: "Server Authentication"
+    reward: "Value Stabilization"
   },
   {
     id: 8,
-    name: "Deep Trace",
-    description: "Following the packet trail deeper into the network.",
+    name: "MANIFESTO DECRYPTION",
+    description: "Unlock the core beliefs of the Clover Boys. Every match reveals a deeper layer of truth.",
     mode: "conviction",
     moves: 22,
-    objective: { type: "score", target: 7500 },
+    objective: { type: "score", target: 8500 },
     difficulty: 4,
-    reward: "Network Mapping"
+    reward: "Wisdom Access"
   },
   {
     id: 9,
-    name: "Network Congestion",
-    description: "Clear the throughput bottleneck.",
+    name: "ROADMAP SYNC",
+    description: "Align the future timeline with current reality. Synchronizing Q4 milestones with the signal.",
     mode: "signal",
     time: 50,
-    objective: { type: "score", target: 8000 },
+    objective: { type: "score", target: 10000 },
     difficulty: 4,
-    reward: "Packet Prioritization"
+    reward: "Timeline Alignment"
   },
   {
     id: 10,
-    name: "The Core Node",
-    description: "Reached the central hub. Almost there.",
+    name: "THE OBSERVER'S GAZE",
+    description: "Mr. Observer sees all. He doesn't gamble; he waits. Prove your patience and skill.",
     mode: "conviction",
     moves: 18,
-    objective: { type: "score", target: 9000 },
+    objective: { type: "score", target: 12000 },
     difficulty: 4,
-    reward: "Hub Visualization"
+    reward: "Witness Approval"
   },
   {
     id: 11,
-    name: "Quantum Burst",
-    description: "Unstable energy detected. Decrypt before collapse.",
+    name: "MARKET RESONANCE",
+    description: "The signal is spreading beyond the core. Harmonize the global network nodes.",
     mode: "signal",
     time: 30,
-    objective: { type: "score", target: 10000 },
+    objective: { type: "score", target: 15000 },
     difficulty: 5,
-    reward: "Quantum Handshake"
+    reward: "Global Synchronization"
   },
   {
     id: 12,
-    name: "Final Decryption",
-    description: "The core signal is yours. Complete the final handshake.",
+    name: "UTILITY INTEGRATION",
+    description: "Ultimate synchronization complete. The signal and the coin are one. Power the movement.",
     mode: "conviction",
     moves: 20,
-    objective: { type: "score", target: 15000 },
+    objective: { type: "score", target: 20000 },
     difficulty: 5,
-    reward: "Complete Signal Access"
+    reward: "Full Movement Power"
   }
 ];

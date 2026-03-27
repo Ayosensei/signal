@@ -5,7 +5,10 @@ const SplashScreen = ({ setView, highScore, gameMode, setGameMode, onCampaignCli
     <div className="splash-screen">
       <div className="top-bar">
         <div className="logo-text">SIGNAL</div>
-        <div className="high-score-display">HIGH-SCORE: {highScore.toLocaleString()}</div>
+        <div className="top-bar-right">
+          <div className="high-score-display">HIGH-SCORE: {highScore.toLocaleString()}</div>
+          <div className="settings-trigger" onClick={() => setView('settings')}>⚙</div>
+        </div>
       </div>
 
       <div className="main-content">

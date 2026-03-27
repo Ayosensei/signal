@@ -11,7 +11,7 @@ const Navigation = ({ view, setView }) => {
         <span className="nav-icon">🎮</span>
         <span className="nav-label">PLAY</span>
       </div>
-      <div className="nav-item">
+      <div className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
         <span className="nav-icon">⚙</span>
         <span className="nav-label">SETTINGS</span>
       </div>
