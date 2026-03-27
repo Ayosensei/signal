@@ -17,8 +17,7 @@ const Tile = memo(({
   isSelected, 
   isProcessing, 
   onClick, 
-  onPointerDown,
-  onPointerEnter
+  onPointerDown
 }) => {
   if (!tile) return null
   const tileType = tile.type
@@ -56,8 +55,7 @@ const Tile = memo(({
       }}
       className={`tile tile-${tileType} ${tile?.special ? 'special-' + tile.special : ''} ${isSelected ? 'selected' : ''}`}
       onClick={() => onClick(r, c)}
-      onPointerDown={() => onPointerDown(r, c)}
-      onPointerEnter={() => onPointerEnter(r, c)}
+      onPointerDown={(e) => onPointerDown(e, r, c)}
       draggable={false}
       data-row={r}
       data-col={c}

@@ -4,12 +4,11 @@ import Tile from './Tile'
 
 const GameBoard = ({ grid, isProcessing, swapTiles }) => {
   const [selectedTile, setSelectedTile] = useState(null)
-  const [isPointerDown, setIsPointerDown] = useState(false)
+  const [swipeOrigin, setSwipeOrigin] = useState(null)
 
   const handleTileClick = useCallback((r, c) => {
     if (isProcessing) return
     
-    // Deselection logic
     if (selectedTile && selectedTile.r === r && selectedTile.c === c) {
       setSelectedTile(null)
       return
@@ -28,32 +27,53 @@ const GameBoard = ({ grid, isProcessing, swapTiles }) => {
     }
   }, [isProcessing, selectedTile, swapTiles])
 
-  const handlePointerDown = useCallback((r, c) => {
+  const handlePointerDown = useCallback((e, r, c) => {
     if (isProcessing) return
-    setIsPointerDown(true)
     setSelectedTile({ r, c })
+    setSwipeOrigin({ x: e.clientX, y: e.clientY, r, c })
   }, [isProcessing])
 
-  const handlePointerEnter = useCallback((r, c) => {
-    if (!isPointerDown || !selectedTile || isProcessing) return
-    
-    const isAdjacent = Math.abs(selectedTile.r - r) + Math.abs(selectedTile.c - c) === 1
-    if (isAdjacent) {
-      swapTiles(selectedTile, { r, c })
-      setSelectedTile(null)
-      setIsPointerDown(false) // Reset after swap
+  const handlePointerMove = useCallback((e) => {
+    if (!swipeOrigin || isProcessing) return
+
+    const dx = e.clientX - swipeOrigin.x
+    const dy = e.clientY - swipeOrigin.y
+    const threshold = 40 // pixels
+
+    let targetR = swipeOrigin.r
+    let targetC = swipeOrigin.c
+
+    if (Math.abs(dx) > threshold) {
+      targetC = dx > 0 ? swipeOrigin.c + 1 : swipeOrigin.c - 1
+    } else if (Math.abs(dy) > threshold) {
+      targetR = dy > 0 ? swipeOrigin.r + 1 : swipeOrigin.r - 1
+    } else {
+      return // Not far enough
     }
-  }, [isPointerDown, selectedTile, isProcessing, swapTiles])
+
+    // Boundary check
+    if (targetR < 0 || targetR >= 8 || targetC < 0 || targetC >= 8) {
+      setSwipeOrigin(null)
+      return
+    }
+
+    swapTiles({ r: swipeOrigin.r, c: swipeOrigin.c }, { r: targetR, c: targetC })
+    setSelectedTile(null)
+    setSwipeOrigin(null)
+  }, [swipeOrigin, isProcessing, swapTiles])
 
   const handlePointerUp = useCallback(() => {
-    setIsPointerDown(false)
+    setSwipeOrigin(null)
   }, [])
 
-  // Global pointer up listener to handle releases outside tiles
   React.useEffect(() => {
+    window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
-    return () => window.removeEventListener('pointerup', handlePointerUp)
-  }, [handlePointerUp])
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [handlePointerMove, handlePointerUp])
 
   return (
     <div className="board" onPointerLeave={handlePointerUp}>
@@ -69,7 +89,6 @@ const GameBoard = ({ grid, isProcessing, swapTiles }) => {
               isProcessing={isProcessing}
               onClick={handleTileClick}
               onPointerDown={handlePointerDown}
-              onPointerEnter={handlePointerEnter}
             />
           ))
         )}
