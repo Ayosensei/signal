@@ -12,6 +12,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
   const [movesLeft, setMovesLeft] = useState(25)
   const [isGameOver, setIsGameOver] = useState(false)
   const [isWin, setIsWin] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const [currentSequence, setCurrentSequence] = useState(levelConfig)
   
   const tileIdRef = useRef(0)
@@ -119,7 +120,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
 
   useEffect(() => {
     const gameMode = currentSequence?.mode || mode
-    if (gameMode === 'signal' && !isGameOver && !isWin) {
+    if (gameMode === 'signal' && !isGameOver && !isWin && !isPaused) {
       const interval = setInterval(() => {
         setTimer(prev => {
           if (prev <= 1) {
@@ -132,7 +133,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
       }, 1000)
       return () => clearInterval(interval)
     }
-  }, [mode, isGameOver, isWin, currentSequence])
+  }, [mode, isGameOver, isWin, currentSequence, isPaused])
 
   const generateBoard = useCallback(() => {
     const newGrid = []
@@ -373,7 +374,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
   }
 
   const swapTiles = useCallback(async (tile1, tile2) => {
-    if (isGameOver) return
+    if (isGameOver || isPaused) return
     setIsProcessing(true)
     
     if (mode === 'conviction' && movesLeft <= 0) {
@@ -509,6 +510,8 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
     isGameOver,
     isWin,
     isProcessing,
+    isPaused,
+    setIsPaused,
     swapTiles,
     generateBoard,
     currentSequence

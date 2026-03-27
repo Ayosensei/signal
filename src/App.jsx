@@ -44,6 +44,8 @@ function App() {
     isGameOver, 
     isWin, 
     isProcessing, 
+    isPaused,
+    setIsPaused,
     swapTiles, 
     generateBoard,
     currentSequence 
@@ -69,7 +71,13 @@ function App() {
     }
   }, [score, highScore, isWin, currentSequence, unlockedSequence])
 
-  // Navigation handlers
+  useEffect(() => {
+    if (view === 'settings' || showGameMenu) {
+      setIsPaused(true)
+    } else {
+      setIsPaused(false)
+    }
+  }, [view, showGameMenu, setIsPaused])
   const handleSetView = (newView) => {
     if (newView === 'about') {
       setShowAbout(true)
