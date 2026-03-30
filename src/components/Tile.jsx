@@ -37,14 +37,14 @@ const Tile = memo(({
       whileTap={{ scale: isProcessing ? 1 : 0.95 }}
       transition={{ 
         type: 'spring', 
-        stiffness: 150, 
-        damping: 25,
-        mass: 1,
+        stiffness: 400, 
+        damping: 30,
+        mass: 0.8,
         layout: { 
           type: 'spring', 
-          stiffness: 200, 
-          damping: 30, 
-          mass: 1
+          stiffness: 500, 
+          damping: 35, 
+          mass: 0.6
         }
       }}
       style={{

@@ -166,7 +166,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
       if (findMatchGroups(newGrid).length === 0 && hasPossibleMoves(newGrid)) {
         setGrid(newGrid)
         validShuffle = true
-        await new Promise(res => setTimeout(res, 600))
+        await new Promise(res => setTimeout(res, 400))
       }
     }
     setIsProcessing(false)
@@ -264,7 +264,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
       totalPoints = 0 // Reset for next cascade
       
       setGrid(nextGrid)
-      await new Promise(res => setTimeout(res, 450))
+      await new Promise(res => setTimeout(res, 350))
       await applyGravity(nextGrid)
     }
 
@@ -291,7 +291,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
       }
       if (changed) {
         setGrid(nextGrid)
-        await new Promise(res => setTimeout(res, 450))
+        await new Promise(res => setTimeout(res, 350))
         await evaluate(nextGrid)
       }
     }
@@ -327,7 +327,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
         }
       }
       setGrid(finalGrid)
-      await new Promise(res => setTimeout(res, 500))
+      await new Promise(res => setTimeout(res, 400))
       await processGridLogic(finalGrid)
       return
     }
@@ -335,7 +335,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
     const nextGrid = grid.map(row => [...row])
     nextGrid[tile1.r][tile1.c] = t2; nextGrid[tile2.r][tile2.c] = t1;
     setGrid(nextGrid)
-    await new Promise(res => setTimeout(res, 500))
+    await new Promise(res => setTimeout(res, 350))
 
     if (findMatchGroups(nextGrid).length > 0) {
       if (mode === 'conviction') setMovesLeft(prev => prev - 1)
@@ -343,7 +343,7 @@ export const useGameLogic = (mode = 'observation', levelConfig = null) => {
     } else {
       const reverted = grid.map(row => [...row])
       setGrid(reverted)
-      await new Promise(res => setTimeout(res, 500))
+      await new Promise(res => setTimeout(res, 350))
       setIsProcessing(false)
     }
   }, [grid, isGameOver, isPaused, isProcessing, mode, movesLeft, processGridLogic])
